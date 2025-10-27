@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { BookOpen, Calendar, FileText, Users, BarChart3, LogOut, Menu, X, User,Settings2Icon } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import Profile from '@/pages/Profile';
-import { toast } from 'sonner';
+import { useToast } from "@/components/ui/use-toast"
+import { Toaster } from "@/components/ui/toaster"
 import { supabase } from '@/integrations/supabase/client';
 
 const Navigation = () => {
@@ -44,7 +45,7 @@ const navigationItems = [
         .single();
 
       if (error) {
-        toast({
+        useToast.arguments({
           title: "שגיאה",
           description: "לא ניתן לטעון את הפרופיל",
           variant: "destructive",

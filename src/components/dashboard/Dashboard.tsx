@@ -358,7 +358,7 @@ import MobileDashboard from "./MobileDashboard";
 import { StatsCard } from "../StatsCard";
 import MobileNavigation from "../layout/MobileNavigation";
 import LeadsStatsCard from "./LeadsStatsCard";
-
+import { useToast } from "@/components/ui/use-toast"
 interface DashboardStats {
   totalLessons: number;
   activeStudents: number;
@@ -573,6 +573,11 @@ setStats({
 
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
+        toast({
+      title: "שגיאה",
+      description: "לא ניתן לטעון את הנתונים",
+      variant: "destructive"
+    });
     } finally {
       setLoading(false);
     }
