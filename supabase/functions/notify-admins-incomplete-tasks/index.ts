@@ -2,8 +2,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 
-export const SUPABASE_URL = process.env.VITE_SUPABASE_URL
-export const SUPABASE_PUBLISHABLE_KEY = process.env.VITE_SUPABASE_PUBLISHABLE_KEY
+export const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
+export const SUPABASE_PUBLISHABLE_KEY = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 export const BREVO_API_KEY = process.env.VITE_BREVO_API_KEY;
 
 Deno.serve(async (req) => {
