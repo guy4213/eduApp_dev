@@ -2021,10 +2021,16 @@ useEffect(() => {
   if (templateLessons.length > 0 || instanceLessons.length > 0) {
     const totalLessons = templateLessons.length + instanceLessons.length;
     console.log('[useEffect-lessons] Updating total_lessons to:', totalLessons);
-    setCourseSchedule(prev => ({
-      ...prev,
-      total_lessons: totalLessons || prev.total_lessons || 1
-    }));
+    console.log('[useEffect-lessons] Current courseSchedule.days_of_week:', courseSchedule.days_of_week);
+    setCourseSchedule(prev => {
+      console.log('[useEffect-lessons] prev.days_of_week before update:', prev.days_of_week);
+      const updated = {
+        ...prev,
+        total_lessons: totalLessons || prev.total_lessons || 1
+      };
+      console.log('[useEffect-lessons] Updated schedule (should preserve days_of_week):', updated);
+      return updated;
+    });
   }
 }, [templateLessons, instanceLessons]); // רק כשהרשימות משתנות, לא כשהערך משתנה
 
@@ -2287,14 +2293,25 @@ const fetchExistingSchedule = async () => {
       const durMinutes = (scheduleData as any).lesson_duration_minutes;
       const taskDurMinutes = (scheduleData as any).task_duration_minutes;
 
-      console.log('[fetchExistingSchedule] Loading schedule data:', {
+      console.log('[fetchExistingSchedule] Raw schedule data from DB:', {
         days_of_week: scheduleData.days_of_week,
+        days_of_week_type: typeof scheduleData.days_of_week,
+        days_of_week_isArray: Array.isArray(scheduleData.days_of_week),
         time_slots: scheduleData.time_slots,
         total_lessons: scheduleData.total_lessons
       });
 
-      setCourseSchedule({
-        days_of_week: scheduleData.days_of_week || [],
+      // Ensure days_of_week is an array of numbers
+      let daysOfWeek = scheduleData.days_of_week || [];
+      if (Array.isArray(daysOfWeek)) {
+        // Convert to numbers if they're strings
+        daysOfWeek = daysOfWeek.map(day => typeof day === 'string' ? parseInt(day) : day);
+      }
+
+      console.log('[fetchExistingSchedule] Normalized days_of_week:', daysOfWeek);
+
+      const newSchedule = {
+        days_of_week: daysOfWeek,
         time_slots: (scheduleData.time_slots as TimeSlot[]) || [],
         total_lessons: scheduleData.total_lessons || 1,
         lesson_duration_minutes:
@@ -2305,7 +2322,10 @@ const fetchExistingSchedule = async () => {
           taskDurMinutes ||
           systemDefaults?.default_task_duration ||
           25,
-      });
+      };
+
+      console.log('[fetchExistingSchedule] Setting courseSchedule to:', newSchedule);
+      setCourseSchedule(newSchedule);
     }
   } catch (error) {
     console.error("Error fetching existing schedule:", error);
@@ -4055,13 +4075,23 @@ const renderSchedulingStep = () => {
 
           <div className="space-y-2">
             <Label>ימים בשבוע</Label>
+            {/* Debug: Show current state */}
+            {console.log('[Render] courseSchedule.days_of_week:', courseSchedule.days_of_week)}
             <div className="flex flex-wrap gap-2">
-              {dayNames.map((day, index) => (
-                <div key={index} className="flex items-center space-x-2">
-                  <Checkbox id={`day-${index}`} checked={courseSchedule.days_of_week.includes(index)} onCheckedChange={() => toggleDayOfWeek(index)} />
-                  <Label htmlFor={`day-${index}`} className="text-sm">{day}</Label>
-                </div>
-              ))}
+              {dayNames.map((day, index) => {
+                const isChecked = courseSchedule.days_of_week.includes(index);
+                console.log(`[Render] Day ${index} (${day}): checked=${isChecked}`);
+                return (
+                  <div key={index} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`day-${index}`}
+                      checked={isChecked}
+                      onCheckedChange={() => toggleDayOfWeek(index)}
+                    />
+                    <Label htmlFor={`day-${index}`} className="text-sm">{day}</Label>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

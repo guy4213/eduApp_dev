@@ -101,11 +101,49 @@ console.log('assignment in popup:', assignment);
         console.log('לוח זמנים נמחק בהצלחה');
       }
       
-      // שלב 3: מחיקת שיעורים מתוזמנים (lesson_schedules) - אם יש
+      // שלב 3: מחיקת דוחות שיעור (lesson_reports)
+      const { error: reportsDeleteError } = await supabase
+        .from('lesson_reports')
+        .delete()
+        .eq('course_instance_id', assignment.instance_id);
 
-      
-      
-      // שלב 5: מחיקת ההקצאה עצמה
+      if (reportsDeleteError) {
+        console.error('שגיאה במחיקת דוחות שיעור:', reportsDeleteError);
+        // לא נזרוק שגיאה כי יכול להיות שאין דוחות
+        console.log('ממשיכים למחיקת ההקצאה למרות שגיאה בדוחות');
+      } else {
+        console.log('דוחות שיעור נמחקו בהצלחה');
+      }
+
+      // שלב 4: מחיקת שיעורים מדווחים (reported_lesson_instances)
+      const { error: reportedLessonsDeleteError } = await supabase
+        .from('reported_lesson_instances')
+        .delete()
+        .eq('course_instance_id', assignment.instance_id);
+
+      if (reportedLessonsDeleteError) {
+        console.error('שגיאה במחיקת שיעורים מדווחים:', reportedLessonsDeleteError);
+        // לא נזרוק שגיאה כי יכול להיות שאין שיעורים מדווחים
+        console.log('ממשיכים למחיקת ההקצאה למרות שגיאה בשיעורים מדווחים');
+      } else {
+        console.log('שיעורים מדווחים נמחקו בהצלחה');
+      }
+
+      // שלב 5: מחיקת שיעורים מתוזמנים ישנים (lesson_schedules) - אם יש
+      const { error: schedulesDeleteError } = await supabase
+        .from('lesson_schedules')
+        .delete()
+        .eq('course_instance_id', assignment.instance_id);
+
+      if (schedulesDeleteError) {
+        console.error('שגיאה במחיקת שיעורים מתוזמנים:', schedulesDeleteError);
+        // לא נזרוק שגיאה כי יכול להיות שאין שיעורים מתוזמנים
+        console.log('ממשיכים למחיקת ההקצאה למרות שגיאה בשיעורים מתוזמנים');
+      } else {
+        console.log('שיעורים מתוזמנים נמחקו בהצלחה');
+      }
+
+      // שלב 6: מחיקת ההקצאה עצמה
       const { error: instanceDeleteError } = await supabase
         .from('course_instances')
         .delete()
