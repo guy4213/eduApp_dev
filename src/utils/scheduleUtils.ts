@@ -1655,7 +1655,15 @@ export const generateLessonSchedulesFromPattern = async (
   courseEndDate?: string
 ): Promise<GeneratedLessonSchedule[]> => {
   const generatedSchedules: GeneratedLessonSchedule[] = [];
-  const { days_of_week, time_slots, total_lessons, course_instance_id } = courseInstanceSchedule;
+  let { days_of_week, time_slots, total_lessons, course_instance_id } = courseInstanceSchedule;
+
+  // *** FIX: Normalize days_of_week and time_slots to ensure they're numbers ***
+  // Database stores as text[] but code expects numbers for comparison
+  days_of_week = (days_of_week || []).map((day: any) => typeof day === 'string' ? parseInt(day, 10) : day);
+  time_slots = (time_slots || []).map((ts: any) => ({
+    ...ts,
+    day: typeof ts.day === 'string' ? parseInt(ts.day, 10) : ts.day
+  }));
   
   if (!days_of_week.length || !time_slots.length || !lessons.length) {
     return generatedSchedules;
@@ -1684,12 +1692,39 @@ export const generateLessonSchedulesFromPattern = async (
   // שיעורים מדווחים יקבלו את אותו תזמון בדיוק
   const unscheduledLessons = lessons;
 
+  // Fetch blocked dates once before the loop to prevent N+1 queries
+  const blockedDates = await getBlockedDates();
+  const blockedDateSet = new Set<string>();
+  blockedDates.forEach(blockedDate => {
+    if (blockedDate.date) {
+      blockedDateSet.add(blockedDate.date);
+    } else if (blockedDate.start_date && blockedDate.end_date) {
+      // Expand date ranges into individual dates
+      const start = new Date(blockedDate.start_date);
+      const end = new Date(blockedDate.end_date);
+      const current = new Date(start);
+      while (current <= end) {
+        blockedDateSet.add(current.toISOString().split('T')[0]);
+        current.setDate(current.getDate() + 1);
+      }
+    }
+  });
+
+  // Helper function to check if a date is blocked (synchronous, no await needed)
+  const isDateBlockedSync = (date: Date): boolean => {
+    const dateStr = date.toISOString().split('T')[0];
+    return blockedDateSet.has(dateStr);
+  };
+
   // מציאת התאריך ההתחלתי לתזמון
   let currentDate = new Date(courseStartDate);
-  
+
   // מצא את היום הראשון המתאים בפטרן
-  while (!days_of_week.includes(currentDate.getDay())) {
+  // Add iteration limit to prevent infinite loop
+  let attempts = 0;
+  while (!days_of_week.includes(currentDate.getDay()) && attempts < 7) {
     currentDate.setDate(currentDate.getDate() + 1);
+    attempts++;
   }
 
   const endDateTime = courseEndDate ? new Date(courseEndDate) : null;
@@ -1699,16 +1734,36 @@ export const generateLessonSchedulesFromPattern = async (
   let lessonNumber = 1;
   const sortedDays = [...days_of_week].sort();
   
+  console.log('🔍 CRITICAL DEBUG:');
+  console.log('  courseStartDate:', courseStartDate);
+  console.log('  courseEndDate:', courseEndDate);
+  console.log('  currentDate (initial):', currentDate.toISOString());
+  console.log('  days_of_week:', days_of_week);
+  console.log('  time_slots:', JSON.stringify(time_slots, null, 2));
+  console.log('  lessons.length:', lessons.length);
+
   // יצירת תזמון לכל השיעורים
   while (lessonIndex < lessons.length && lessonNumber <= maxLessons) {
     const dayOfWeek = currentDate.getDay();
     
+    if (lessonIndex === 0) { // רק בפעם הראשונה
+      console.log('🔍 DEBUG - First iteration:');
+      console.log('  days_of_week:', days_of_week);
+      console.log('  sortedDays:', sortedDays);
+      console.log('  time_slots:', time_slots);
+      console.log('  currentDate:', currentDate.toISOString());
+      console.log('  dayOfWeek:', dayOfWeek);
+      console.log('  lessons.length:', lessons.length);
+      console.log('  endDateTime:', endDateTime?.toISOString());
+    }
+
     if (sortedDays.includes(dayOfWeek)) {
       const timeSlot = time_slots.find(ts => ts.day === dayOfWeek);
       
       if (timeSlot && timeSlot.start_time && timeSlot.end_time) {
-        const isBlocked = await isDateBlocked(currentDate);
-        
+        // Use synchronous check - no await needed, much faster!
+        const isBlocked = isDateBlockedSync(currentDate);
+
         if (!isBlocked) {
           if (endDateTime && currentDate > endDateTime) {
             break;
@@ -2247,10 +2302,20 @@ async function generateSchedulesInDateRange(
   console.log(`[generateSchedulesInDateRange] Date range: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`);
 
   const generatedSchedules: any[] = [];
-  const { days_of_week, time_slots, course_instance_id, course_instances } = pattern;
+  let { days_of_week, time_slots, course_instance_id, course_instances } = pattern;
 
-  console.log(`[generateSchedulesInDateRange] Days of week:`, days_of_week);
-  console.log(`[generateSchedulesInDateRange] Time slots:`, time_slots);
+  // *** FIX: Normalize days_of_week to ensure it's an array of numbers ***
+  // Database stores as text[] but code expects numbers for comparison
+  days_of_week = (days_of_week || []).map((day: any) => typeof day === 'string' ? parseInt(day, 10) : day);
+
+  // *** FIX: Normalize time_slots day field to numbers as well ***
+  time_slots = (time_slots || []).map((ts: any) => ({
+    ...ts,
+    day: typeof ts.day === 'string' ? parseInt(ts.day, 10) : ts.day
+  }));
+
+  console.log(`[generateSchedulesInDateRange] Days of week (normalized):`, days_of_week);
+  console.log(`[generateSchedulesInDateRange] Time slots (normalized):`, time_slots);
 
   if (!days_of_week?.length || !time_slots?.length || !lessons.length) {
     console.log(`[generateSchedulesInDateRange] ⚠️ Missing required data - returning empty`);
@@ -2275,10 +2340,38 @@ async function generateSchedulesInDateRange(
 
   const reportedLessonIds = new Set(existingReports?.map(r => r.lesson_id) || []);
 
+  // Fetch blocked dates once before the loop to prevent N+1 queries
+  console.log(`[generateSchedulesInDateRange] Fetching blocked dates...`);
+  const blockedDates = await getBlockedDates();
+  console.log(`[generateSchedulesInDateRange] Found ${blockedDates.length} blocked date entries`);
+
+  // Create a Set of blocked date strings for fast O(1) lookup
+  const blockedDateSet = new Set<string>();
+  blockedDates.forEach(blockedDate => {
+    if (blockedDate.date) {
+      blockedDateSet.add(blockedDate.date);
+    } else if (blockedDate.start_date && blockedDate.end_date) {
+      // Expand date ranges into individual dates
+      const start = new Date(blockedDate.start_date);
+      const end = new Date(blockedDate.end_date);
+      const current = new Date(start);
+      while (current <= end) {
+        blockedDateSet.add(current.toISOString().split('T')[0]);
+        current.setDate(current.getDate() + 1);
+      }
+    }
+  });
+  console.log(`[generateSchedulesInDateRange] Total blocked dates: ${blockedDateSet.size}`);
+
+  // Helper function to check if a date is blocked (synchronous, no await needed)
+  const isDateBlockedSync = (date: Date): boolean => {
+    const dateStr = date.toISOString().split('T')[0];
+    return blockedDateSet.has(dateStr);
+  };
+
   // Start from the course start date or the requested start date, whichever is later
   const courseStartDate = new Date(course_instances.start_date);
   console.log(`[generateSchedulesInDateRange] Course start date: ${courseStartDate.toLocaleDateString()}`);
-  console.log(`[generateSchedulesInDateRange] Requested start date: ${startDate.toLocaleDateString()}`);
 
   let currentDate = new Date(Math.max(courseStartDate.getTime(), startDate.getTime()));
   console.log(`[generateSchedulesInDateRange] Starting generation from: ${currentDate.toLocaleDateString()}`);
@@ -2315,7 +2408,8 @@ async function generateSchedulesInDateRange(
       const timeSlot = time_slots.find((ts: any) => ts.day === dayOfWeek);
 
       if (timeSlot && timeSlot.start_time && timeSlot.end_time) {
-        const isBlocked = await isDateBlocked(currentDate);
+        // Use synchronous check - no await needed, much faster!
+        const isBlocked = isDateBlockedSync(currentDate);
 
         if (!isBlocked) {
           const dateStr = currentDate.toISOString().split('T')[0];
