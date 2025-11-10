@@ -1773,11 +1773,13 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { 
-  getSystemDefaults, 
-  getDisabledDatesForCalendar, 
+import {
+  getSystemDefaults,
+  getDisabledDatesForCalendar,
   isDateBlocked,
-  clearSystemCache 
+  clearSystemCache,
+  generatePhysicalSchedulesFromPattern,
+  updatePhysicalSchedules
 } from "@/utils/scheduleUtils"; // עדכן את הנתיב לפי המיקום הנכון
 import { Switch } from "@radix-ui/react-switch";
 import { useAuth } from "./auth/AuthProvider";
@@ -3504,34 +3506,122 @@ const handleFinalSave = async () => {
     // שלב 1: שמור/עדכן את ההקצאה
     const newInstanceId = await handleCourseAssignment();
     if (!newInstanceId) throw new Error("Failed to create or update course instance.");
-    console.log("handlesave lesson_mode as: ", lessonMode);  
+    console.log("handlesave lesson_mode as: ", lessonMode);
+
     // שלב 2: שמור את לוח הזמנים
     await saveCourseInstanceSchedule(newInstanceId);
-    
+
+    // שלב 2.5: Generate/Update physical schedules
+    try {
+      // Fetch the saved schedule pattern
+      const { data: schedulePattern, error: scheduleError } = await supabase
+        .from('course_instance_schedules')
+        .select(`
+          *,
+          course_instances:course_instance_id (
+            course_id,
+            start_date,
+            end_date,
+            lesson_mode
+          )
+        `)
+        .eq('course_instance_id', newInstanceId)
+        .single();
+
+      if (scheduleError) throw scheduleError;
+
+      if (schedulePattern) {
+        const currentLessonMode = schedulePattern.course_instances.lesson_mode || lessonMode;
+
+        // Fetch lessons based on lesson_mode
+        const { data: instanceLessons: instLessons } = await supabase
+          .from('lessons')
+          .select('id, title, course_id, order_index, course_instance_id')
+          .eq('course_instance_id', newInstanceId)
+          .order('order_index');
+
+        const { data: templateLessons: templLessons } = await supabase
+          .from('lessons')
+          .select('id, title, course_id, order_index, course_instance_id')
+          .eq('course_id', schedulePattern.course_instances.course_id)
+          .is('course_instance_id', null)
+          .order('order_index');
+
+        let lessonsForScheduling: any[] = [];
+        switch (currentLessonMode) {
+          case 'custom_only':
+            lessonsForScheduling = instLessons || [];
+            break;
+          case 'combined':
+            lessonsForScheduling = [...(templLessons || []), ...(instLessons || [])]
+              .sort((a, b) => a.order_index - b.order_index);
+            break;
+          case 'template':
+          default:
+            lessonsForScheduling = templLessons || [];
+            break;
+        }
+
+        if (lessonsForScheduling.length > 0) {
+          if (mode === 'edit') {
+            // Update existing physical schedules
+            console.log('[CourseAssignDialog] Updating physical schedules...');
+            const result = await updatePhysicalSchedules(schedulePattern.id, newInstanceId);
+            console.log('[CourseAssignDialog] Update result:', result.message);
+          } else {
+            // Generate new physical schedules
+            console.log('[CourseAssignDialog] Generating physical schedules...');
+            const physicalSchedules = await generatePhysicalSchedulesFromPattern(
+              {
+                id: schedulePattern.id,
+                course_instance_id: newInstanceId,
+                days_of_week: schedulePattern.days_of_week,
+                time_slots: schedulePattern.time_slots,
+                total_lessons: schedulePattern.total_lessons,
+                lesson_duration_minutes: schedulePattern.lesson_duration_minutes,
+              },
+              lessonsForScheduling,
+              schedulePattern.course_instances.start_date,
+              schedulePattern.course_instances.end_date
+            );
+            console.log('[CourseAssignDialog] Generated physical schedules:', physicalSchedules.length);
+          }
+        }
+      }
+    } catch (physicalScheduleError) {
+      console.error('[CourseAssignDialog] Error with physical schedules:', physicalScheduleError);
+      // Don't fail the whole operation if physical schedules fail
+      toast({
+        title: "אזהרה",
+        description: "לוח הזמנים נשמר אך היה שגיאה ביצירת לוחות הזמנים הפיזיים",
+        variant: "destructive"
+      });
+    }
+
     // שלב 3: שמור שיעורים ייחודיים (אם קיימים)
     if (hasCustomLessons && instanceLessons.length > 0) {
       await saveInstanceLessons(newInstanceId);
-      toast({ 
-        title: "הצלחה", 
+      toast({
+        title: "הצלחה",
         description: `ההקצאה נשמרה עם ${instanceLessons.length} שיעורים ייחודיים!`,
         variant: "default"
       });
     } else {
-      toast({ 
-        title: "הצלחה", 
+      toast({
+        title: "הצלחה",
         description: mode === 'edit' ? "התוכנית עודכנה בהצלחה!" : "התוכנית נוצרה בהצלחה!",
         variant: "default"
       });
     }
-    
+
     onAssignmentComplete();
     onOpenChange(false);
   } catch (error) {
     console.error("Error saving:", error);
-    toast({ 
-      title: "שגיאה", 
-      description: "אירעה שגיאה בשמירה", 
-      variant: "destructive" 
+    toast({
+      title: "שגיאה",
+      description: "אירעה שגיאה בשמירה",
+      variant: "destructive"
     });
   } finally {
     setLoading(false);

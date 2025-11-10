@@ -2060,18 +2060,17 @@ export const fetchCombinedSchedules = async (
   courseInstanceIds?: string | string[]
 ): Promise<any[]> => {
   try {
-    // Fetch generated schedules מה-pattern
-    const generatedSchedules = await fetchAndGenerateSchedules(courseInstanceIds);
+    // Fetch physical schedules from database
+    const physicalSchedules = await fetchPhysicalSchedules(courseInstanceIds);
 
-    // הלוחות זמנים כבר ממוינים ומסודרים
-    console.log(`[fetchCombinedSchedules] Generated ${generatedSchedules.length} schedules from pattern`);
+    console.log(`[fetchCombinedSchedules] Fetched ${physicalSchedules.length} physical schedules from DB`);
 
     // Log sample schedule for debugging
-    if (generatedSchedules.length > 0) {
-      console.log('[fetchCombinedSchedules] Sample schedule:', generatedSchedules[0]);
+    if (physicalSchedules.length > 0) {
+      console.log('[fetchCombinedSchedules] Sample schedule:', physicalSchedules[0]);
     }
 
-    return generatedSchedules;
+    return physicalSchedules;
   } catch (error) {
     console.error('Error in fetchCombinedSchedules:', error);
     return [];
@@ -2116,7 +2115,7 @@ export const filterSchedulesByDateRange = (
 };
 
 /**
- * Fetches schedules filtered by date range at the database level for better performance
+ * Fetches physical schedules filtered by date range from the database
  * This is much more efficient than loading all schedules and filtering in JavaScript
  */
 export const fetchSchedulesByDateRange = async (
@@ -2129,18 +2128,24 @@ export const fetchSchedulesByDateRange = async (
     console.log(`[fetchSchedulesByDateRange] Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
     console.log(`[fetchSchedulesByDateRange] Course instance IDs filter:`, courseInstanceIds);
 
-    // Get all course instance schedules (patterns)
-    let patternsQuery = supabase
-      .from('course_instance_schedules')
+    // Fetch physical schedules from database with date range filter
+    let query = supabase
+      .from('lesson_schedules')
       .select(`
         *,
+        lesson:lesson_id (
+          id,
+          title,
+          order_index,
+          course_id,
+          course_instance_id
+        ),
         course_instances:course_instance_id (
           id,
           course_id,
           start_date,
           end_date,
           grade_level,
-          lesson_mode,
           course:course_id (
             id,
             name
@@ -2154,133 +2159,37 @@ export const fetchSchedulesByDateRange = async (
             full_name
           )
         )
-      `);
+      `)
+      .eq('is_generated', false) // Only fetch physical schedules
+      .gte('scheduled_start', startDate.toISOString())
+      .lte('scheduled_start', endDate.toISOString())
+      .order('scheduled_start', { ascending: true });
 
     if (courseInstanceIds) {
       console.log('[fetchSchedulesByDateRange] Applying course instance filter');
       if (Array.isArray(courseInstanceIds)) {
-        patternsQuery = patternsQuery.in('course_instance_id', courseInstanceIds);
+        query = query.in('course_instance_id', courseInstanceIds);
       } else {
-        patternsQuery = patternsQuery.eq('course_instance_id', courseInstanceIds);
+        query = query.eq('course_instance_id', courseInstanceIds);
       }
     }
 
-    console.log('[fetchSchedulesByDateRange] Fetching schedule patterns...');
-    const { data: patterns, error: patternsError } = await patternsQuery;
+    console.log('[fetchSchedulesByDateRange] Fetching physical schedules from DB...');
+    const { data: schedules, error: schedulesError } = await query;
 
-    if (patternsError) {
-      console.error('[fetchSchedulesByDateRange] ❌ Error fetching patterns:', patternsError);
+    if (schedulesError) {
+      console.error('[fetchSchedulesByDateRange] ❌ Error fetching physical schedules:', schedulesError);
       return [];
     }
 
-    console.log(`[fetchSchedulesByDateRange] ✅ Found ${patterns?.length || 0} schedule patterns`);
-    if (patterns && patterns.length > 0) {
-      console.log('[fetchSchedulesByDateRange] Patterns:', patterns.map(p => ({
-        id: p.id,
-        course_instance_id: p.course_instance_id,
-        days_of_week: p.days_of_week,
-        time_slots_count: p.time_slots?.length,
-        course_name: p.course_instances?.course?.name
-      })));
-    }
-
-    if (!patterns || patterns.length === 0) {
-      console.log('[fetchSchedulesByDateRange] ⚠️ No schedule patterns found - returning empty array');
-      return [];
-    }
-
-    // Generate schedules for each pattern
-    const allSchedules: any[] = [];
-
-    console.log(`[fetchSchedulesByDateRange] Processing ${patterns.length} patterns...`);
-
-    for (let i = 0; i < patterns.length; i++) {
-      const pattern = patterns[i];
-      console.log(`[fetchSchedulesByDateRange] --- Pattern ${i + 1}/${patterns.length} ---`);
-      console.log(`[fetchSchedulesByDateRange]   Course Instance ID: ${pattern.course_instance_id}`);
-      console.log(`[fetchSchedulesByDateRange]   Has course_instances:`, !!pattern.course_instances);
-
-      if (!pattern.course_instances) {
-        console.log(`[fetchSchedulesByDateRange]   ⚠️ Skipping - no course_instances data`);
-        continue;
-      }
-
-      const lessonMode = pattern.course_instances.lesson_mode || 'template';
-      console.log(`[fetchSchedulesByDateRange]   Lesson mode: ${lessonMode}`);
-      console.log(`[fetchSchedulesByDateRange]   Course ID: ${pattern.course_instances.course_id}`);
-      console.log(`[fetchSchedulesByDateRange]   Course name: ${pattern.course_instances.course?.name}`);
-
-      // Fetch lessons based on lesson mode
-      console.log(`[fetchSchedulesByDateRange]   Fetching instance lessons...`);
-      const { data: instanceLessons, error: instanceError } = await supabase
-        .from('lessons')
-        .select('id, title, course_id, order_index, course_instance_id')
-        .eq('course_instance_id', pattern.course_instance_id)
-        .order('order_index');
-
-      if (instanceError) {
-        console.error(`[fetchSchedulesByDateRange]   ❌ Error fetching instance lessons:`, instanceError);
-      } else {
-        console.log(`[fetchSchedulesByDateRange]   Found ${instanceLessons?.length || 0} instance lessons`);
-      }
-
-      console.log(`[fetchSchedulesByDateRange]   Fetching template lessons...`);
-      const { data: templateLessons, error: templateError } = await supabase
-        .from('lessons')
-        .select('id, title, course_id, order_index, course_instance_id')
-        .eq('course_id', pattern.course_instances.course_id)
-        .is('course_instance_id', null)
-        .order('order_index');
-
-      if (templateError) {
-        console.error(`[fetchSchedulesByDateRange]   ❌ Error fetching template lessons:`, templateError);
-      } else {
-        console.log(`[fetchSchedulesByDateRange]   Found ${templateLessons?.length || 0} template lessons`);
-      }
-
-      let lessons: any[] = [];
-      switch (lessonMode) {
-        case 'custom_only':
-          lessons = instanceLessons || [];
-          console.log(`[fetchSchedulesByDateRange]   Using ${lessons.length} custom-only lessons`);
-          break;
-        case 'combined':
-          lessons = [...(templateLessons || []), ...(instanceLessons || [])].sort(
-            (a, b) => a.order_index - b.order_index
-          );
-          console.log(`[fetchSchedulesByDateRange]   Using ${lessons.length} combined lessons (${templateLessons?.length || 0} template + ${instanceLessons?.length || 0} instance)`);
-          break;
-        case 'template':
-        default:
-          lessons = templateLessons || [];
-          console.log(`[fetchSchedulesByDateRange]   Using ${lessons.length} template lessons`);
-          break;
-      }
-
-      if (lessons.length === 0) {
-        console.log(`[fetchSchedulesByDateRange]   ⚠️ No lessons found - skipping pattern`);
-        continue;
-      }
-
-      // Generate schedules only for the requested date range
-      console.log(`[fetchSchedulesByDateRange]   Generating schedules for date range...`);
-      const schedules = await generateSchedulesInDateRange(
-        pattern,
-        lessons,
-        startDate,
-        endDate
-      );
-
-      console.log(`[fetchSchedulesByDateRange]   ✅ Generated ${schedules.length} schedules`);
-      allSchedules.push(...schedules);
+    console.log(`[fetchSchedulesByDateRange] ✅ Found ${schedules?.length || 0} physical schedules`);
+    if (schedules && schedules.length > 0) {
+      console.log('[fetchSchedulesByDateRange] Sample schedule:', schedules[0]);
     }
 
     console.log(`[fetchSchedulesByDateRange] ====== COMPLETE ======`);
-    console.log(`[fetchSchedulesByDateRange] 🎯 Total schedules generated: ${allSchedules.length}`);
-    if (allSchedules.length > 0) {
-      console.log(`[fetchSchedulesByDateRange] Sample schedule:`, allSchedules[0]);
-    }
-    return allSchedules;
+    console.log(`[fetchSchedulesByDateRange] 🎯 Total physical schedules: ${schedules?.length || 0}`);
+    return schedules || [];
   } catch (error) {
     console.error('[fetchSchedulesByDateRange] Error:', error);
     return [];
@@ -2467,3 +2376,512 @@ async function generateSchedulesInDateRange(
 
   return generatedSchedules;
 }
+
+// ============================================================================
+// PHYSICAL SCHEDULES FUNCTIONALITY
+// ============================================================================
+
+/**
+ * Generates and saves physical schedules to the database
+ * Unlike virtual schedules, these are actual database records in lesson_schedules table
+ */
+export const generatePhysicalSchedulesFromPattern = async (
+  courseInstanceSchedule: CourseInstanceSchedule,
+  lessons: any[],
+  courseStartDate: string,
+  courseEndDate?: string
+): Promise<any[]> => {
+  try {
+    const { days_of_week, time_slots, total_lessons, course_instance_id } = courseInstanceSchedule;
+
+    // Normalize days_of_week and time_slots to ensure they're numbers
+    const normalizedDays = (days_of_week || []).map((day: any) =>
+      typeof day === 'string' ? parseInt(day, 10) : day
+    );
+    const normalizedTimeSlots = (time_slots || []).map((ts: any) => ({
+      ...ts,
+      day: typeof ts.day === 'string' ? parseInt(ts.day, 10) : ts.day
+    }));
+
+    if (!normalizedDays.length || !normalizedTimeSlots.length || !lessons.length) {
+      console.log('Cannot generate physical schedules: missing required data');
+      return [];
+    }
+
+    console.log(`[generatePhysicalSchedules] Starting generation for course instance ${course_instance_id}`);
+    console.log(`[generatePhysicalSchedules] Lessons: ${lessons.length}, Total lessons: ${total_lessons}`);
+
+    // Fetch blocked dates once
+    const blockedDates = await getBlockedDates();
+    const blockedDateSet = new Set<string>();
+    blockedDates.forEach(blockedDate => {
+      if (blockedDate.date) {
+        blockedDateSet.add(blockedDate.date);
+      } else if (blockedDate.start_date && blockedDate.end_date) {
+        const start = new Date(blockedDate.start_date);
+        const end = new Date(blockedDate.end_date);
+        const current = new Date(start);
+        while (current <= end) {
+          blockedDateSet.add(current.toISOString().split('T')[0]);
+          current.setDate(current.getDate() + 1);
+        }
+      }
+    });
+
+    const isDateBlockedSync = (date: Date): boolean => {
+      const dateStr = date.toISOString().split('T')[0];
+      return blockedDateSet.has(dateStr);
+    };
+
+    // Find first valid date
+    let currentDate = new Date(courseStartDate);
+    let attempts = 0;
+    while (!normalizedDays.includes(currentDate.getDay()) && attempts < 7) {
+      currentDate.setDate(currentDate.getDate() + 1);
+      attempts++;
+    }
+
+    const endDateTime = courseEndDate ? new Date(courseEndDate) : null;
+    const maxLessons = total_lessons || lessons.length;
+
+    let lessonIndex = 0;
+    let lessonNumber = 1;
+    const sortedDays = [...normalizedDays].sort();
+    const schedulesToInsert: any[] = [];
+
+    // Generate schedules
+    while (lessonIndex < lessons.length && lessonNumber <= maxLessons) {
+      const dayOfWeek = currentDate.getDay();
+
+      if (sortedDays.includes(dayOfWeek)) {
+        const timeSlot = normalizedTimeSlots.find(ts => ts.day === dayOfWeek);
+
+        if (timeSlot && timeSlot.start_time && timeSlot.end_time) {
+          const isBlocked = isDateBlockedSync(currentDate);
+
+          if (!isBlocked) {
+            if (endDateTime && currentDate > endDateTime) {
+              break;
+            }
+
+            const dateStr = currentDate.toISOString().split('T')[0];
+            const scheduledStart = `${dateStr}T${timeSlot.start_time}:00`;
+            const scheduledEnd = `${dateStr}T${timeSlot.end_time}:00`;
+
+            const currentLesson = lessons[lessonIndex];
+
+            schedulesToInsert.push({
+              course_instance_id: course_instance_id,
+              lesson_id: currentLesson.id,
+              scheduled_start: scheduledStart,
+              scheduled_end: scheduledEnd,
+              lesson_number: lessonNumber,
+              is_generated: false, // Physical schedules are not "generated" (not virtual)
+            });
+
+            lessonIndex++;
+            lessonNumber++;
+          } else {
+            console.log(`[generatePhysicalSchedules] Skipping blocked date: ${currentDate.toISOString().split('T')[0]}`);
+          }
+        }
+      }
+
+      currentDate.setDate(currentDate.getDate() + 1);
+
+      // Safety check
+      if (currentDate.getTime() - new Date(courseStartDate).getTime() > 365 * 24 * 60 * 60 * 1000) {
+        console.warn('[generatePhysicalSchedules] Safety break: exceeded 1 year from start date');
+        break;
+      }
+    }
+
+    console.log(`[generatePhysicalSchedules] Generated ${schedulesToInsert.length} schedules to insert`);
+
+    // Insert all schedules to database
+    if (schedulesToInsert.length > 0) {
+      const { data, error } = await supabase
+        .from('lesson_schedules')
+        .insert(schedulesToInsert)
+        .select();
+
+      if (error) {
+        console.error('[generatePhysicalSchedules] Error inserting schedules:', error);
+        throw error;
+      }
+
+      console.log(`[generatePhysicalSchedules] Successfully inserted ${data?.length || 0} physical schedules`);
+      return data || [];
+    }
+
+    return [];
+  } catch (error) {
+    console.error('[generatePhysicalSchedules] Error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fetches physical schedules from the database
+ */
+export const fetchPhysicalSchedules = async (
+  courseInstanceIds?: string | string[]
+): Promise<any[]> => {
+  try {
+    let query = supabase
+      .from('lesson_schedules')
+      .select(`
+        *,
+        lesson:lesson_id (
+          id,
+          title,
+          order_index,
+          course_id,
+          course_instance_id
+        ),
+        course_instances:course_instance_id (
+          id,
+          course_id,
+          start_date,
+          end_date,
+          grade_level,
+          course:course_id (
+            id,
+            name
+          ),
+          institution:institution_id (
+            id,
+            name
+          ),
+          instructor:instructor_id (
+            id,
+            full_name
+          )
+        )
+      `)
+      .eq('is_generated', false) // Only fetch physical schedules
+      .order('scheduled_start', { ascending: true });
+
+    if (courseInstanceIds) {
+      if (Array.isArray(courseInstanceIds)) {
+        query = query.in('course_instance_id', courseInstanceIds);
+      } else {
+        query = query.eq('course_instance_id', courseInstanceIds);
+      }
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('[fetchPhysicalSchedules] Error:', error);
+      return [];
+    }
+
+    console.log(`[fetchPhysicalSchedules] Fetched ${data?.length || 0} physical schedules`);
+    return data || [];
+  } catch (error) {
+    console.error('[fetchPhysicalSchedules] Error:', error);
+    return [];
+  }
+};
+
+/**
+ * Smart update function that syncs physical schedules with course instance schedule pattern
+ * - Updates changed schedules
+ * - Deletes removed schedules (only if no report exists)
+ * - Inserts new schedules
+ * - Protects schedules that have reports
+ */
+export const updatePhysicalSchedules = async (
+  courseInstanceScheduleId: string,
+  courseInstanceId: string
+): Promise<{ success: boolean; message: string }> => {
+  try {
+    console.log(`[updatePhysicalSchedules] Starting update for course instance ${courseInstanceId}`);
+
+    // 1. Fetch the current schedule pattern
+    const { data: schedulePattern, error: patternError } = await supabase
+      .from('course_instance_schedules')
+      .select(`
+        *,
+        course_instances:course_instance_id (
+          id,
+          course_id,
+          start_date,
+          end_date,
+          lesson_mode
+        )
+      `)
+      .eq('id', courseInstanceScheduleId)
+      .single();
+
+    if (patternError || !schedulePattern) {
+      console.error('[updatePhysicalSchedules] Error fetching schedule pattern:', patternError);
+      return { success: false, message: 'Schedule pattern not found' };
+    }
+
+    // 2. Fetch lessons based on lesson_mode
+    const lessonMode = schedulePattern.course_instances.lesson_mode || 'template';
+
+    const { data: instanceLessons } = await supabase
+      .from('lessons')
+      .select('id, title, course_id, order_index, course_instance_id')
+      .eq('course_instance_id', courseInstanceId)
+      .order('order_index');
+
+    const { data: templateLessons } = await supabase
+      .from('lessons')
+      .select('id, title, course_id, order_index, course_instance_id')
+      .eq('course_id', schedulePattern.course_instances.course_id)
+      .is('course_instance_id', null)
+      .order('order_index');
+
+    let lessons: any[] = [];
+    switch (lessonMode) {
+      case 'custom_only':
+        lessons = instanceLessons || [];
+        break;
+      case 'combined':
+        lessons = [...(templateLessons || []), ...(instanceLessons || [])]
+          .sort((a, b) => a.order_index - b.order_index);
+        break;
+      case 'template':
+      default:
+        lessons = templateLessons || [];
+        break;
+    }
+
+    if (!lessons || lessons.length === 0) {
+      console.log('[updatePhysicalSchedules] No lessons found');
+      return { success: false, message: 'No lessons found for this course' };
+    }
+
+    // 3. Fetch existing physical schedules
+    const { data: existingSchedules, error: schedError } = await supabase
+      .from('lesson_schedules')
+      .select(`
+        *,
+        lesson_reports:lesson_reports(id)
+      `)
+      .eq('course_instance_id', courseInstanceId)
+      .eq('is_generated', false);
+
+    if (schedError) {
+      console.error('[updatePhysicalSchedules] Error fetching existing schedules:', schedError);
+      return { success: false, message: 'Error fetching existing schedules' };
+    }
+
+    console.log(`[updatePhysicalSchedules] Found ${existingSchedules?.length || 0} existing schedules`);
+
+    // 4. Generate new schedule structure (what it SHOULD be)
+    const { days_of_week, time_slots, total_lessons } = schedulePattern;
+    const normalizedDays = (days_of_week || []).map((day: any) =>
+      typeof day === 'string' ? parseInt(day, 10) : day
+    );
+    const normalizedTimeSlots = (time_slots || []).map((ts: any) => ({
+      ...ts,
+      day: typeof ts.day === 'string' ? parseInt(ts.day, 10) : ts.day
+    }));
+
+    // Fetch blocked dates
+    const blockedDates = await getBlockedDates();
+    const blockedDateSet = new Set<string>();
+    blockedDates.forEach(blockedDate => {
+      if (blockedDate.date) {
+        blockedDateSet.add(blockedDate.date);
+      } else if (blockedDate.start_date && blockedDate.end_date) {
+        const start = new Date(blockedDate.start_date);
+        const end = new Date(blockedDate.end_date);
+        const current = new Date(start);
+        while (current <= end) {
+          blockedDateSet.add(current.toISOString().split('T')[0]);
+          current.setDate(current.getDate() + 1);
+        }
+      }
+    });
+
+    const isDateBlockedSync = (date: Date): boolean => {
+      const dateStr = date.toISOString().split('T')[0];
+      return blockedDateSet.has(dateStr);
+    };
+
+    // Generate the ideal schedule structure
+    let currentDate = new Date(schedulePattern.course_instances.start_date);
+    let attempts = 0;
+    while (!normalizedDays.includes(currentDate.getDay()) && attempts < 7) {
+      currentDate.setDate(currentDate.getDate() + 1);
+      attempts++;
+    }
+
+    const endDateTime = schedulePattern.course_instances.end_date
+      ? new Date(schedulePattern.course_instances.end_date)
+      : null;
+    const maxLessons = total_lessons || lessons.length;
+
+    let lessonIndex = 0;
+    let lessonNumber = 1;
+    const sortedDays = [...normalizedDays].sort();
+    const idealSchedules: any[] = [];
+
+    while (lessonIndex < lessons.length && lessonNumber <= maxLessons) {
+      const dayOfWeek = currentDate.getDay();
+
+      if (sortedDays.includes(dayOfWeek)) {
+        const timeSlot = normalizedTimeSlots.find(ts => ts.day === dayOfWeek);
+
+        if (timeSlot && timeSlot.start_time && timeSlot.end_time) {
+          const isBlocked = isDateBlockedSync(currentDate);
+
+          if (!isBlocked) {
+            if (endDateTime && currentDate > endDateTime) {
+              break;
+            }
+
+            const dateStr = currentDate.toISOString().split('T')[0];
+            const scheduledStart = `${dateStr}T${timeSlot.start_time}:00`;
+            const scheduledEnd = `${dateStr}T${timeSlot.end_time}:00`;
+
+            idealSchedules.push({
+              lesson_id: lessons[lessonIndex].id,
+              scheduled_start: scheduledStart,
+              scheduled_end: scheduledEnd,
+              lesson_number: lessonNumber,
+            });
+
+            lessonIndex++;
+            lessonNumber++;
+          }
+        }
+      }
+
+      currentDate.setDate(currentDate.getDate() + 1);
+
+      if (currentDate.getTime() - new Date(schedulePattern.course_instances.start_date).getTime() > 365 * 24 * 60 * 60 * 1000) {
+        break;
+      }
+    }
+
+    console.log(`[updatePhysicalSchedules] Generated ${idealSchedules.length} ideal schedules`);
+
+    // 5. Compare and sync
+    const schedulesToUpdate: any[] = [];
+    const schedulesToInsert: any[] = [];
+    const schedulesToDelete: string[] = [];
+    const protectedScheduleIds = new Set<string>();
+
+    // Build a map of existing schedules by lesson_number
+    const existingMap = new Map<number, any>();
+    existingSchedules?.forEach(schedule => {
+      if (schedule.lesson_number) {
+        existingMap.set(schedule.lesson_number, schedule);
+      }
+    });
+
+    // Check each ideal schedule
+    idealSchedules.forEach(idealSched => {
+      const existing = existingMap.get(idealSched.lesson_number);
+
+      if (existing) {
+        // Check if it has reports
+        const hasReports = existing.lesson_reports && existing.lesson_reports.length > 0;
+
+        if (hasReports) {
+          // Protect schedules with reports - don't update
+          protectedScheduleIds.add(existing.id);
+          console.log(`[updatePhysicalSchedules] Protecting schedule ${existing.id} (has reports)`);
+        } else {
+          // Check if anything changed
+          const changed =
+            existing.lesson_id !== idealSched.lesson_id ||
+            existing.scheduled_start !== idealSched.scheduled_start ||
+            existing.scheduled_end !== idealSched.scheduled_end;
+
+          if (changed) {
+            schedulesToUpdate.push({
+              id: existing.id,
+              lesson_id: idealSched.lesson_id,
+              scheduled_start: idealSched.scheduled_start,
+              scheduled_end: idealSched.scheduled_end,
+            });
+          }
+        }
+
+        // Remove from map so we know it's been processed
+        existingMap.delete(idealSched.lesson_number);
+      } else {
+        // New schedule needed
+        schedulesToInsert.push({
+          course_instance_id: courseInstanceId,
+          lesson_id: idealSched.lesson_id,
+          scheduled_start: idealSched.scheduled_start,
+          scheduled_end: idealSched.scheduled_end,
+          lesson_number: idealSched.lesson_number,
+          is_generated: false,
+        });
+      }
+    });
+
+    // Remaining schedules in existingMap should be deleted (if no reports)
+    existingMap.forEach((schedule) => {
+      const hasReports = schedule.lesson_reports && schedule.lesson_reports.length > 0;
+      if (!hasReports) {
+        schedulesToDelete.push(schedule.id);
+      } else {
+        protectedScheduleIds.add(schedule.id);
+        console.log(`[updatePhysicalSchedules] Protecting schedule ${schedule.id} from deletion (has reports)`);
+      }
+    });
+
+    console.log(`[updatePhysicalSchedules] Changes needed:`);
+    console.log(`  - Update: ${schedulesToUpdate.length}`);
+    console.log(`  - Insert: ${schedulesToInsert.length}`);
+    console.log(`  - Delete: ${schedulesToDelete.length}`);
+    console.log(`  - Protected: ${protectedScheduleIds.size}`);
+
+    // 6. Execute changes
+    let updateCount = 0;
+    let insertCount = 0;
+    let deleteCount = 0;
+
+    // Update existing schedules
+    for (const schedule of schedulesToUpdate) {
+      const { error } = await supabase
+        .from('lesson_schedules')
+        .update({
+          lesson_id: schedule.lesson_id,
+          scheduled_start: schedule.scheduled_start,
+          scheduled_end: schedule.scheduled_end,
+        })
+        .eq('id', schedule.id);
+
+      if (!error) updateCount++;
+    }
+
+    // Insert new schedules
+    if (schedulesToInsert.length > 0) {
+      const { data, error } = await supabase
+        .from('lesson_schedules')
+        .insert(schedulesToInsert);
+
+      if (!error) insertCount = schedulesToInsert.length;
+    }
+
+    // Delete obsolete schedules
+    if (schedulesToDelete.length > 0) {
+      const { error } = await supabase
+        .from('lesson_schedules')
+        .delete()
+        .in('id', schedulesToDelete);
+
+      if (!error) deleteCount = schedulesToDelete.length;
+    }
+
+    const message = `Updated ${updateCount}, inserted ${insertCount}, deleted ${deleteCount} schedules. ${protectedScheduleIds.size} schedules protected.`;
+    console.log(`[updatePhysicalSchedules] ${message}`);
+
+    return { success: true, message };
+  } catch (error) {
+    console.error('[updatePhysicalSchedules] Error:', error);
+    return { success: false, message: `Error: ${error}` };
+  }
+};
