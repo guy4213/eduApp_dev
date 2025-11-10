@@ -1959,6 +1959,11 @@ console.log(" instance id from dialog assign ",instanceId)
   setStep(1);
   setScheduleWarnings([]); // הוסף את זה
 
+  // *** FIX: Reset lesson mode states ***
+  setLessonMode('template');
+  setLessonSource('none');
+  setIsCombinedMode(false);
+
   // טעינת הגדרות מערכת וקבצים חסומים
   loadSystemConfiguration();
 
@@ -2229,9 +2234,12 @@ const fetchExistingSchedule = async () => {
 
     // Check the mode and fetch template lessons if needed
     if (instanceData) {
-      const lessonMode = (instanceData as any).lesson_mode;
-      if (lessonMode === 'combined') {
-        setIsCombinedMode(true);
+      const dbLessonMode = (instanceData as any).lesson_mode;
+      if (dbLessonMode) {
+        setLessonMode(dbLessonMode); // *** FIX: Set the actual lesson mode from DB ***
+        if (dbLessonMode === 'combined') {
+          setIsCombinedMode(true);
+        }
       }
       // This is the crucial fix: fetch template lessons for the correct course
       const coursId = (instanceData as any).course_id;
