@@ -4211,7 +4211,7 @@ const renderSchedulingStep = () => {
 
         <DialogFooter className="flex justify-between">
           <Button type="button" variant="outline" onClick={() => setStep(1)}>חזור</Button>
-          <Button onClick={handleFinalSave} disabled={loading}>{loading ? "שומר..." : "סיים ושמור"}</Button>
+          <Button onClick={handleFinalSave} disabled={loading}>{loading ? "יוצר..." : "צור הקצאה "}</Button>
         </DialogFooter>
       </div>
     );
@@ -4416,7 +4416,7 @@ const renderCustomLessonsDialog = () => (
           variant="outline"
           onClick={() => setShowCustomLessonsDialog(false)}
         >
-          סגור
+          שמור שינויים
         </Button>
       </DialogFooter>
     </DialogContent>
