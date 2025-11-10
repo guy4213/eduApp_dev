@@ -4307,7 +4307,7 @@ const renderCustomLessonsDialog = () => (
                   <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
                     <BookOpen className="h-6 w-6 text-green-600" />
                   </div>
-                  <h4 className="font-semibold text-gray-900">העתק מתבנית (5 שיעורים)</h4>
+                  <h4 className="font-semibold text-gray-900">העתק מתבנית </h4>
                   <p className="text-sm text-gray-600 text-center">
                     העתק את כל שיעורי התבנית כנקודת התחלה לעריכה
                   </p>
