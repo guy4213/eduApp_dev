@@ -2410,6 +2410,9 @@ export const generatePhysicalSchedulesFromPattern = async (
 
     console.log(`[generatePhysicalSchedules] Starting generation for course instance ${course_instance_id}`);
     console.log(`[generatePhysicalSchedules] Lessons: ${lessons.length}, Total lessons: ${total_lessons}`);
+    console.log(`[generatePhysicalSchedules] Days of week:`, normalizedDays);
+    console.log(`[generatePhysicalSchedules] Time slots:`, normalizedTimeSlots);
+    console.log(`[generatePhysicalSchedules] Start date: ${courseStartDate}, End date: ${courseEndDate || 'none'}`);
 
     // Fetch blocked dates once
     const blockedDates = await getBlockedDates();
@@ -2427,6 +2430,8 @@ export const generatePhysicalSchedulesFromPattern = async (
         }
       }
     });
+
+    console.log(`[generatePhysicalSchedules] Blocked dates: ${blockedDateSet.size > 0 ? Array.from(blockedDateSet).join(', ') : 'none'}`);
 
     const isDateBlockedSync = (date: Date): boolean => {
       const dateStr = date.toISOString().split('T')[0];
@@ -2450,8 +2455,13 @@ export const generatePhysicalSchedulesFromPattern = async (
     const schedulesToInsert: any[] = [];
 
     // Generate schedules
+    console.log(`[generatePhysicalSchedules] Starting loop - lessonIndex: ${lessonIndex}, maxLessons: ${maxLessons}`);
+
     while (lessonIndex < lessons.length && lessonNumber <= maxLessons) {
       const dayOfWeek = currentDate.getDay();
+      const dateStr = currentDate.toISOString().split('T')[0];
+
+      console.log(`[generatePhysicalSchedules] Checking date ${dateStr} (day ${dayOfWeek}) - lessonIndex: ${lessonIndex}/${lessons.length}, lessonNumber: ${lessonNumber}/${maxLessons}`);
 
       if (sortedDays.includes(dayOfWeek)) {
         const timeSlot = normalizedTimeSlots.find(ts => ts.day === dayOfWeek);
@@ -2461,14 +2471,16 @@ export const generatePhysicalSchedulesFromPattern = async (
 
           if (!isBlocked) {
             if (endDateTime && currentDate > endDateTime) {
+              console.log(`[generatePhysicalSchedules] Reached end date - breaking`);
               break;
             }
 
-            const dateStr = currentDate.toISOString().split('T')[0];
             const scheduledStart = `${dateStr}T${timeSlot.start_time}:00`;
             const scheduledEnd = `${dateStr}T${timeSlot.end_time}:00`;
 
             const currentLesson = lessons[lessonIndex];
+
+            console.log(`[generatePhysicalSchedules] ✓ Creating schedule for lesson #${lessonNumber}: ${currentLesson.title} on ${dateStr}`);
 
             schedulesToInsert.push({
               course_instance_id: course_instance_id,
@@ -2482,9 +2494,13 @@ export const generatePhysicalSchedulesFromPattern = async (
             lessonIndex++;
             lessonNumber++;
           } else {
-            console.log(`[generatePhysicalSchedules] Skipping blocked date: ${currentDate.toISOString().split('T')[0]}`);
+            console.log(`[generatePhysicalSchedules] ✗ Skipping blocked date: ${dateStr}`);
           }
+        } else {
+          console.log(`[generatePhysicalSchedules] ✗ No time slot found for day ${dayOfWeek}`);
         }
+      } else {
+        console.log(`[generatePhysicalSchedules] ✗ Day ${dayOfWeek} not in schedule (${sortedDays.join(',')})`);
       }
 
       currentDate.setDate(currentDate.getDate() + 1);
@@ -2496,7 +2512,13 @@ export const generatePhysicalSchedulesFromPattern = async (
       }
     }
 
+    console.log(`[generatePhysicalSchedules] Loop ended - Final state: lessonIndex: ${lessonIndex}/${lessons.length}, lessonNumber: ${lessonNumber}/${maxLessons}`);
     console.log(`[generatePhysicalSchedules] Generated ${schedulesToInsert.length} schedules to insert`);
+
+    if (schedulesToInsert.length < maxLessons) {
+      console.warn(`[generatePhysicalSchedules] WARNING: Expected ${maxLessons} schedules but only generated ${schedulesToInsert.length}!`);
+      console.warn(`[generatePhysicalSchedules] This might be due to: blocked dates, end date reached, or missing time slots`);
+    }
 
     // Insert all schedules to database
     if (schedulesToInsert.length > 0) {
