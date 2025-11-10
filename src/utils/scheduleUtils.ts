@@ -1587,15 +1587,19 @@ export const getBlockedDates = async (forceRefresh: boolean = false): Promise<Bl
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.error('[getBlockedDates] Error from Supabase:', error);
+      throw error;
+    }
 
-    console.log('[getBlockedDates] Fetched from DB:', data);
+    console.log('[getBlockedDates] Fetched from DB - count:', data?.length || 0, 'data:', data);
 
     blockedDatesCache = data || [];
     cacheTimestamp = now;
     return data || [];
   } catch (error) {
-    console.error('Error fetching blocked dates:', error);
+    console.error('[getBlockedDates] CRITICAL ERROR fetching blocked dates:', error);
+    console.error('[getBlockedDates] Error details:', JSON.stringify(error, null, 2));
     return [];
   }
 };
@@ -2417,8 +2421,8 @@ export const generatePhysicalSchedulesFromPattern = async (
     console.log(`[generatePhysicalSchedules] Time slots:`, normalizedTimeSlots);
     console.log(`[generatePhysicalSchedules] Start date: ${courseStartDate}, End date: ${courseEndDate || 'none'}`);
 
-    // Fetch blocked dates once
-    const blockedDates = await getBlockedDates();
+    // Fetch blocked dates once (force refresh to bypass cache)
+    const blockedDates = await getBlockedDates(true); // Force refresh!
     const blockedDateSet = new Set<string>();
     blockedDates.forEach(blockedDate => {
       if (blockedDate.date) {
