@@ -2485,16 +2485,16 @@ const resetInstanceLessons = async () => {
   if (mode === 'edit' && actualInstanceId) {
     // **במצב עריכה - מחק מה-DB**
     try {
-      // *** FIX: First delete physical schedules, then lessons ***
-      // Step 1: Delete all physical schedules for this course instance
+      // *** FIX: First delete ALL schedules (physical and virtual), then lessons ***
+      // Step 1: Delete ALL schedules for this course instance
       const { error: schedulesError } = await supabase
         .from('lesson_schedules')
         .delete()
-        .eq('course_instance_id', actualInstanceId)
-        .eq('is_generated', false);
+        .eq('course_instance_id', actualInstanceId);
+        // Removed .eq('is_generated', false) - delete ALL schedules
 
       if (schedulesError) {
-        console.error('Error deleting physical schedules:', schedulesError);
+        console.error('Error deleting schedules:', schedulesError);
         throw schedulesError;
       }
 
@@ -3404,15 +3404,15 @@ const saveCourseInstanceSchedule = async (instanceId: string) => {
       if (lessonIdsToDelete.length > 0) {
         console.log(`Deleting ${lessonIdsToDelete.length} lessons...`);
 
-        // *** FIX: First delete physical schedules linked to these lessons ***
+        // *** FIX: First delete ALL schedules linked to these lessons ***
         const { error: deleteSchedulesError } = await supabase
           .from('lesson_schedules')
           .delete()
-          .in('lesson_id', lessonIdsToDelete)
-          .eq('is_generated', false);
+          .in('lesson_id', lessonIdsToDelete);
+          // Removed .eq('is_generated', false) - delete ALL schedules
 
         if (deleteSchedulesError) {
-          console.error('Error deleting physical schedules:', deleteSchedulesError);
+          console.error('Error deleting schedules for lessons:', deleteSchedulesError);
           throw deleteSchedulesError;
         }
 
