@@ -2494,22 +2494,24 @@ const resetInstanceLessons = async () => {
   const actualInstanceId = instanceId || editData?.instance_id;
 
   if (mode === 'edit' && actualInstanceId) {
-    // **במצב עריכה - מחק מה-DB**
+    // **במצב עריכה - מחק מה-DB וצור מחדש**
     try {
-      // *** FIX: First delete ALL schedules (physical and virtual), then lessons ***
+      console.log('[resetInstanceLessons] Starting reset for instance:', actualInstanceId);
+
       // Step 1: Delete ALL schedules for this course instance
       const { error: schedulesError } = await supabase
         .from('lesson_schedules')
         .delete()
         .eq('course_instance_id', actualInstanceId);
-        // Removed .eq('is_generated', false) - delete ALL schedules
 
       if (schedulesError) {
-        console.error('Error deleting schedules:', schedulesError);
+        console.error('[resetInstanceLessons] Error deleting schedules:', schedulesError);
         throw schedulesError;
       }
 
-      // Step 2: Now we can safely delete the lessons
+      console.log('[resetInstanceLessons] All schedules deleted');
+
+      // Step 2: Delete the custom lessons
       const { error: lessonsError } = await supabase
         .from('lessons')
         .delete()
@@ -2517,22 +2519,101 @@ const resetInstanceLessons = async () => {
 
       if (lessonsError) throw lessonsError;
 
+      console.log('[resetInstanceLessons] Custom lessons deleted');
+
+      // Step 3: Update lesson_mode to template
+      const { error: updateError } = await supabase
+        .from('course_instances')
+        .update({ lesson_mode: 'template' })
+        .eq('id', actualInstanceId);
+
+      if (updateError) {
+        console.error('[resetInstanceLessons] Error updating lesson_mode:', updateError);
+        throw updateError;
+      }
+
+      console.log('[resetInstanceLessons] Updated lesson_mode to template');
+
+      // Step 4: Regenerate physical schedules with template lessons
+      try {
+        // Fetch the schedule pattern
+        const { data: schedulePattern, error: scheduleError } = await supabase
+          .from('course_instance_schedules')
+          .select(`
+            *,
+            course_instances:course_instance_id (
+              course_id,
+              start_date,
+              end_date
+            )
+          `)
+          .eq('course_instance_id', actualInstanceId)
+          .single();
+
+        if (scheduleError) throw scheduleError;
+
+        if (schedulePattern && schedulePattern.course_instances) {
+          // Fetch template lessons
+          const { data: templateLessons } = await supabase
+            .from('lessons')
+            .select('id, title, course_id, order_index, course_instance_id')
+            .eq('course_id', schedulePattern.course_instances.course_id)
+            .is('course_instance_id', null)
+            .order('order_index');
+
+          console.log('[resetInstanceLessons] Template lessons found:', templateLessons?.length || 0);
+
+          if (templateLessons && templateLessons.length > 0) {
+            // Generate new physical schedules with template lessons
+            const physicalSchedules = await generatePhysicalSchedulesFromPattern(
+              {
+                id: schedulePattern.id,
+                course_instance_id: actualInstanceId,
+                days_of_week: schedulePattern.days_of_week,
+                time_slots: schedulePattern.time_slots,
+                total_lessons: schedulePattern.total_lessons,
+                lesson_duration_minutes: schedulePattern.lesson_duration_minutes,
+              },
+              templateLessons,
+              schedulePattern.course_instances.start_date,
+              schedulePattern.course_instances.end_date
+            );
+
+            console.log('[resetInstanceLessons] Regenerated physical schedules:', physicalSchedules.length);
+          }
+        }
+      } catch (regenerateError) {
+        console.error('[resetInstanceLessons] Error regenerating schedules:', regenerateError);
+        // Don't fail the whole operation
+      }
+
+      // Update UI state
       setInstanceLessons([]);
       setHasCustomLessons(false);
       setLessonSource('none');
-      setLessonMode('template'); // *** CRITICAL FIX: Reset to template mode ***
+      setLessonMode('template');
       setIsCombinedMode(false);
-      toast({ title: "נמחק", description: "כל השיעורים הייחודיים ולוחות הזמנים נמחקו מההקצאה" });
+
+      toast({
+        title: "חזרה לברירת מחדל",
+        description: "השיעורים והתזמונים חזרו לברירת המחדל של הקורס",
+        variant: "default"
+      });
+
     } catch (error) {
-      console.error('Error resetting lessons:', error);
-      toast({ title: "שגיאה", description: "שגיאה במחיקת שיעורים ייחודיים: " + (error?.message || ''), variant: "destructive" });
+      console.error('[resetInstanceLessons] Error resetting lessons:', error);
+      toast({
+        title: "שגיאה",
+        description: "שגיאה בחזרה לברירת מחדל: " + (error?.message || ''),
+        variant: "destructive"
+      });
     }
   } else {
     // **במצב יצירה - רק ניקוי state**
     setInstanceLessons([]);
     setHasCustomLessons(false);
     setLessonSource('none');
-    setLessonMode('template'); // *** CRITICAL FIX: Reset to template mode ***
+    setLessonMode('template');
     setIsCombinedMode(false);
     toast({ title: "נוקה", description: "השיעורים הייחודיים הוסרו (לא נשמר עדיין)" });
   }
