@@ -1902,7 +1902,8 @@ const [isCombinedMode, setIsCombinedMode] = useState(true);
 
 console.log(" instance id from dialog assign ",instanceId)
   const isMounted = useRef(false);
-  
+  const isLoadingEditData = useRef(false);
+
   const dayNames = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 
   // --- useEffects for Data Loading and State Reset ---
@@ -1949,13 +1950,14 @@ console.log(" instance id from dialog assign ",instanceId)
     return;
   }
 
+  // Reset to initial state
   const initialState = getInitialState();
   setFormData(initialState.formData);
   setCourseSchedule(initialState.courseSchedule);
   setInstanceLessons(initialState.instanceLessons);
   setHasCustomLessons(initialState.hasCustomLessons);
   setStep(1);
-  setScheduleWarnings([]); // הוסף את זה
+  setScheduleWarnings([]);
 
   // טעינת הגדרות מערכת וקבצים חסומים
   loadSystemConfiguration();
@@ -1971,9 +1973,38 @@ console.log(" instance id from dialog assign ",instanceId)
       }
     });
   } else if (mode === 'edit' && editData) {
-    fetchExistingSchedule();
-    loadInstanceLessons();
-    if(courseId) fetchTemplateLessons();
+    // In edit mode, load existing data which will override initial state
+    console.log('[useEffect] Loading edit data for instance:', editData.instance_id);
+    isLoadingEditData.current = true;
+
+    // First, populate formData with editData
+    setFormData({
+      institution_id: "", // Will be filled from schedule
+      instructor_id: "", // Will be filled from schedule
+      grade_level: editData.grade_level,
+      price_for_customer: editData.price_for_customer.toString(),
+      price_for_instructor: editData.price_for_instructor.toString(),
+      max_participants: editData.max_participants.toString(),
+      start_date: editData.start_date,
+      end_date: editData.approx_end_date || "",
+    });
+
+    // Load schedule first, then lessons
+    fetchExistingSchedule().then(() => {
+      console.log('[useEffect] Schedule loaded, loading lessons...');
+      return loadInstanceLessons();
+    }).then(() => {
+      console.log('[useEffect] Instance lessons loaded');
+      if(courseId) {
+        return fetchTemplateLessons();
+      }
+    }).then(() => {
+      console.log('[useEffect] All edit data loaded successfully');
+      isLoadingEditData.current = false;
+    }).catch(error => {
+      console.error('[useEffect] Error loading edit data:', error);
+      isLoadingEditData.current = false;
+    });
   }
 
   isMounted.current = true;
@@ -1981,12 +2012,25 @@ console.log(" instance id from dialog assign ",instanceId)
 
 
 useEffect(() => {
+  // Don't update during initial edit data loading to prevent race conditions
+  if (isLoadingEditData.current) {
+    console.log('[useEffect-lessons] Skipping update - still loading edit data');
+    return;
+  }
+
   if (templateLessons.length > 0 || instanceLessons.length > 0) {
     const totalLessons = templateLessons.length + instanceLessons.length;
-    setCourseSchedule(prev => ({
-      ...prev,
-      total_lessons: totalLessons || prev.total_lessons || 1
-    }));
+    console.log('[useEffect-lessons] Updating total_lessons to:', totalLessons);
+    console.log('[useEffect-lessons] Current courseSchedule.days_of_week:', courseSchedule.days_of_week);
+    setCourseSchedule(prev => {
+      console.log('[useEffect-lessons] prev.days_of_week before update:', prev.days_of_week);
+      const updated = {
+        ...prev,
+        total_lessons: totalLessons || prev.total_lessons || 1
+      };
+      console.log('[useEffect-lessons] Updated schedule (should preserve days_of_week):', updated);
+      return updated;
+    });
   }
 }, [templateLessons, instanceLessons]); // רק כשהרשימות משתנות, לא כשהערך משתנה
 
@@ -2248,9 +2292,26 @@ const fetchExistingSchedule = async () => {
     if (scheduleData && !scheduleError) {
       const durMinutes = (scheduleData as any).lesson_duration_minutes;
       const taskDurMinutes = (scheduleData as any).task_duration_minutes;
-      
-      setCourseSchedule({
-        days_of_week: scheduleData.days_of_week || [],
+
+      console.log('[fetchExistingSchedule] Raw schedule data from DB:', {
+        days_of_week: scheduleData.days_of_week,
+        days_of_week_type: typeof scheduleData.days_of_week,
+        days_of_week_isArray: Array.isArray(scheduleData.days_of_week),
+        time_slots: scheduleData.time_slots,
+        total_lessons: scheduleData.total_lessons
+      });
+
+      // Ensure days_of_week is an array of numbers
+      let daysOfWeek = scheduleData.days_of_week || [];
+      if (Array.isArray(daysOfWeek)) {
+        // Convert to numbers if they're strings
+        daysOfWeek = daysOfWeek.map(day => typeof day === 'string' ? parseInt(day) : day);
+      }
+
+      console.log('[fetchExistingSchedule] Normalized days_of_week:', daysOfWeek);
+
+      const newSchedule = {
+        days_of_week: daysOfWeek,
         time_slots: (scheduleData.time_slots as TimeSlot[]) || [],
         total_lessons: scheduleData.total_lessons || 1,
         lesson_duration_minutes:
@@ -2261,7 +2322,10 @@ const fetchExistingSchedule = async () => {
           taskDurMinutes ||
           systemDefaults?.default_task_duration ||
           25,
-      });
+      };
+
+      console.log('[fetchExistingSchedule] Setting courseSchedule to:', newSchedule);
+      setCourseSchedule(newSchedule);
     }
   } catch (error) {
     console.error("Error fetching existing schedule:", error);
@@ -4011,13 +4075,23 @@ const renderSchedulingStep = () => {
 
           <div className="space-y-2">
             <Label>ימים בשבוע</Label>
+            {/* Debug: Show current state */}
+            {console.log('[Render] courseSchedule.days_of_week:', courseSchedule.days_of_week)}
             <div className="flex flex-wrap gap-2">
-              {dayNames.map((day, index) => (
-                <div key={index} className="flex items-center space-x-2">
-                  <Checkbox id={`day-${index}`} checked={courseSchedule.days_of_week.includes(index)} onCheckedChange={() => toggleDayOfWeek(index)} />
-                  <Label htmlFor={`day-${index}`} className="text-sm">{day}</Label>
-                </div>
-              ))}
+              {dayNames.map((day, index) => {
+                const isChecked = courseSchedule.days_of_week.includes(index);
+                console.log(`[Render] Day ${index} (${day}): checked=${isChecked}`);
+                return (
+                  <div key={index} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`day-${index}`}
+                      checked={isChecked}
+                      onCheckedChange={() => toggleDayOfWeek(index)}
+                    />
+                    <Label htmlFor={`day-${index}`} className="text-sm">{day}</Label>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -4067,7 +4141,7 @@ const renderSchedulingStep = () => {
 
         <DialogFooter className="flex justify-between">
           <Button type="button" variant="outline" onClick={() => setStep(1)}>חזור</Button>
-          <Button onClick={handleFinalSave} disabled={loading}>{loading ? "שומר..." : "סיים ושמור"}</Button>
+          <Button type="button" onClick={handleFinalSave} disabled={loading}>{loading ? "שומר..." : "סיים ושמור"}</Button>
         </DialogFooter>
       </div>
     );
