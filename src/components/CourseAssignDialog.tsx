@@ -1773,11 +1773,12 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { 
-  getSystemDefaults, 
-  getDisabledDatesForCalendar, 
+import {
+  getSystemDefaults,
+  getDisabledDatesForCalendar,
   isDateBlocked,
-  clearSystemCache 
+  getBlockedDates,
+  clearSystemCache
 } from "@/utils/scheduleUtils"; // עדכן את הנתיב לפי המיקום הנכון
 import { Switch } from "@radix-ui/react-switch";
 import { useAuth } from "./auth/AuthProvider";
@@ -2032,20 +2033,45 @@ const validateScheduleDates = async () => {
   }
   
   const warnings: string[] = [];
-  
+
+  // Fetch blocked dates once before the loop to prevent N+1 queries
+  const blockedDates = await getBlockedDates();
+  const blockedDateSet = new Set<string>();
+  blockedDates.forEach(blockedDate => {
+    if (blockedDate.date) {
+      blockedDateSet.add(blockedDate.date);
+    } else if (blockedDate.start_date && blockedDate.end_date) {
+      // Expand date ranges into individual dates
+      const start = new Date(blockedDate.start_date);
+      const end = new Date(blockedDate.end_date);
+      const current = new Date(start);
+      while (current <= end) {
+        blockedDateSet.add(current.toISOString().split('T')[0]);
+        current.setDate(current.getDate() + 1);
+      }
+    }
+  });
+
+  // Helper function to check if a date is blocked (synchronous, no await needed)
+  const isDateBlockedSync = (date: Date): boolean => {
+    const dateStr = date.toISOString().split('T')[0];
+    return blockedDateSet.has(dateStr);
+  };
+
   // Generate potential lesson dates
   const potentialDates: Date[] = [];
   const startDate = new Date(formData.start_date);
   const endDate = new Date(formData.end_date);
-  
+
   let currentDate = new Date(startDate);
   let lessonCount = 0;
   const maxLessons = templateLessons.length + instanceLessons.length || 10;
-  
+
   while (currentDate <= endDate && lessonCount < maxLessons) {
     const dayOfWeek = currentDate.getDay();
     if (courseSchedule.days_of_week.includes(dayOfWeek)) {
-      const isBlocked = await isDateBlocked(currentDate);
+      // Use synchronous check - no await needed, much faster!
+      const isBlocked = isDateBlockedSync(currentDate);
       if (isBlocked) {
         warnings.push(`התאריך ${formatDate(currentDate, "dd/MM/yyyy")} חסום במערכת`);
       }
@@ -2829,9 +2855,18 @@ const saveCourseInstanceSchedule = async (instanceId: string) => {
     const adjustedTimeSlots = courseSchedule.time_slots.map(timeSlot => {
       const startDate = new Date(formData.start_date + 'T00:00:00');
       let targetDate = new Date(startDate);
-      
-      while (targetDate.getDay() !== timeSlot.day) {
+
+      // Add iteration limit to prevent infinite loop
+      let iterations = 0;
+      while (targetDate.getDay() !== timeSlot.day && iterations < 7) {
         targetDate.setDate(targetDate.getDate() + 1);
+        iterations++;
+      }
+
+      // Validate that we found the correct day
+      if (iterations === 7 && targetDate.getDay() !== timeSlot.day) {
+        console.error(`Invalid time slot day value: ${timeSlot.day}. Must be 0-6.`);
+        throw new Error(`שגיאה: יום שבוע לא חוקי (${timeSlot.day}). חייב להיות בין 0-6.`);
       }
       
       const [hours, minutes] = timeSlot.start_time.split(':').map(Number);

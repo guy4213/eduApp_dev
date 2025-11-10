@@ -1684,12 +1684,45 @@ export const generateLessonSchedulesFromPattern = async (
   // שיעורים מדווחים יקבלו את אותו תזמון בדיוק
   const unscheduledLessons = lessons;
 
+  // Fetch blocked dates once before the loop to prevent N+1 queries
+  const blockedDates = await getBlockedDates();
+  const blockedDateSet = new Set<string>();
+  blockedDates.forEach(blockedDate => {
+    if (blockedDate.date) {
+      blockedDateSet.add(blockedDate.date);
+    } else if (blockedDate.start_date && blockedDate.end_date) {
+      // Expand date ranges into individual dates
+      const start = new Date(blockedDate.start_date);
+      const end = new Date(blockedDate.end_date);
+      const current = new Date(start);
+      while (current <= end) {
+        blockedDateSet.add(current.toISOString().split('T')[0]);
+        current.setDate(current.getDate() + 1);
+      }
+    }
+  });
+
+  // Helper function to check if a date is blocked (synchronous, no await needed)
+  const isDateBlockedSync = (date: Date): boolean => {
+    const dateStr = date.toISOString().split('T')[0];
+    return blockedDateSet.has(dateStr);
+  };
+
   // מציאת התאריך ההתחלתי לתזמון
   let currentDate = new Date(courseStartDate);
-  
+
   // מצא את היום הראשון המתאים בפטרן
-  while (!days_of_week.includes(currentDate.getDay())) {
+  // Add iteration limit to prevent infinite loop
+  let attempts = 0;
+  while (!days_of_week.includes(currentDate.getDay()) && attempts < 7) {
     currentDate.setDate(currentDate.getDate() + 1);
+    attempts++;
+  }
+
+  // Validate that we found a matching day
+  if (attempts === 7 && !days_of_week.includes(currentDate.getDay())) {
+    console.error('No matching day of week found in 7-day period. days_of_week:', days_of_week);
+    throw new Error('שגיאה: לא נמצא יום שבוע מתאים בפטרן התזמון.');
   }
 
   const endDateTime = courseEndDate ? new Date(courseEndDate) : null;
@@ -1707,8 +1740,9 @@ export const generateLessonSchedulesFromPattern = async (
       const timeSlot = time_slots.find(ts => ts.day === dayOfWeek);
       
       if (timeSlot && timeSlot.start_time && timeSlot.end_time) {
-        const isBlocked = await isDateBlocked(currentDate);
-        
+        // Use synchronous check - no await needed, much faster!
+        const isBlocked = isDateBlockedSync(currentDate);
+
         if (!isBlocked) {
           if (endDateTime && currentDate > endDateTime) {
             break;
@@ -2275,6 +2309,35 @@ async function generateSchedulesInDateRange(
 
   const reportedLessonIds = new Set(existingReports?.map(r => r.lesson_id) || []);
 
+  // Fetch blocked dates once before the loop to prevent N+1 queries
+  console.log(`[generateSchedulesInDateRange] Fetching blocked dates...`);
+  const blockedDates = await getBlockedDates();
+  console.log(`[generateSchedulesInDateRange] Found ${blockedDates.length} blocked date entries`);
+
+  // Create a Set of blocked date strings for fast O(1) lookup
+  const blockedDateSet = new Set<string>();
+  blockedDates.forEach(blockedDate => {
+    if (blockedDate.date) {
+      blockedDateSet.add(blockedDate.date);
+    } else if (blockedDate.start_date && blockedDate.end_date) {
+      // Expand date ranges into individual dates
+      const start = new Date(blockedDate.start_date);
+      const end = new Date(blockedDate.end_date);
+      const current = new Date(start);
+      while (current <= end) {
+        blockedDateSet.add(current.toISOString().split('T')[0]);
+        current.setDate(current.getDate() + 1);
+      }
+    }
+  });
+  console.log(`[generateSchedulesInDateRange] Total blocked dates: ${blockedDateSet.size}`);
+
+  // Helper function to check if a date is blocked (synchronous, no await needed)
+  const isDateBlockedSync = (date: Date): boolean => {
+    const dateStr = date.toISOString().split('T')[0];
+    return blockedDateSet.has(dateStr);
+  };
+
   // Start from the course start date or the requested start date, whichever is later
   const courseStartDate = new Date(course_instances.start_date);
   console.log(`[generateSchedulesInDateRange] Course start date: ${courseStartDate.toLocaleDateString()}`);
@@ -2315,7 +2378,8 @@ async function generateSchedulesInDateRange(
       const timeSlot = time_slots.find((ts: any) => ts.day === dayOfWeek);
 
       if (timeSlot && timeSlot.start_time && timeSlot.end_time) {
-        const isBlocked = await isDateBlocked(currentDate);
+        // Use synchronous check - no await needed, much faster!
+        const isBlocked = isDateBlockedSync(currentDate);
 
         if (!isBlocked) {
           const dateStr = currentDate.toISOString().split('T')[0];
