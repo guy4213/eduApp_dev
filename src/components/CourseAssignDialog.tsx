@@ -1899,8 +1899,8 @@ const [systemDefaults, setSystemDefaults] = useState<any>(null);
 const [scheduleWarnings, setScheduleWarnings] = useState<string[]>([]);
 const [draggedLessonIndex, setDraggedLessonIndex] = useState<number | null>(null);
 const [lessonSource, setLessonSource] = useState<'none' | 'template' | 'scratch'>('none');
-const [lessonMode, setLessonMode] = useState<'template' | 'custom_only' | 'combined'|'none'>('combined');
-const [isCombinedMode, setIsCombinedMode] = useState(true);
+const [lessonMode, setLessonMode] = useState<'template' | 'custom_only' | 'combined'|'none'>('template');
+const [isCombinedMode, setIsCombinedMode] = useState(false);
 
 console.log(" instance id from dialog assign ",instanceId)
   const isMounted = useRef(false);
@@ -2250,10 +2250,21 @@ const fetchExistingSchedule = async () => {
     if (scheduleData && !scheduleError) {
       const durMinutes = (scheduleData as any).lesson_duration_minutes;
       const taskDurMinutes = (scheduleData as any).task_duration_minutes;
-      
+
+      // Normalize days_of_week to numbers (might come from DB as strings)
+      const normalizedDays = (scheduleData.days_of_week || []).map((day: any) =>
+        typeof day === 'string' ? parseInt(day, 10) : day
+      );
+
+      // Normalize time_slots days to numbers
+      const normalizedTimeSlots = ((scheduleData.time_slots as any[]) || []).map((ts: any) => ({
+        ...ts,
+        day: typeof ts.day === 'string' ? parseInt(ts.day, 10) : ts.day
+      }));
+
       setCourseSchedule({
-        days_of_week: scheduleData.days_of_week || [],
-        time_slots: (scheduleData.time_slots as TimeSlot[]) || [],
+        days_of_week: normalizedDays,
+        time_slots: normalizedTimeSlots as TimeSlot[],
         total_lessons: scheduleData.total_lessons || 1,
         lesson_duration_minutes:
           durMinutes ||
@@ -2470,7 +2481,7 @@ const startCombinedMode = () => {
   // };
 const resetInstanceLessons = async () => {
   const actualInstanceId = instanceId || editData?.instance_id;
-  
+
   if (mode === 'edit' && actualInstanceId) {
     // **במצב עריכה - מחק מה-DB**
     try {
@@ -2484,6 +2495,8 @@ const resetInstanceLessons = async () => {
       setInstanceLessons([]);
       setHasCustomLessons(false);
       setLessonSource('none');
+      setLessonMode('template'); // *** CRITICAL FIX: Reset to template mode ***
+      setIsCombinedMode(false);
       toast({ title: "נמחק", description: "כל השיעורים הייחודיים נמחקו מההקצאה" });
     } catch (error) {
       console.error('Error resetting lessons:', error);
@@ -2494,6 +2507,8 @@ const resetInstanceLessons = async () => {
     setInstanceLessons([]);
     setHasCustomLessons(false);
     setLessonSource('none');
+    setLessonMode('template'); // *** CRITICAL FIX: Reset to template mode ***
+    setIsCombinedMode(false);
     toast({ title: "נוקה", description: "השיעורים הייחודיים הוסרו (לא נשמר עדיין)" });
   }
 };
