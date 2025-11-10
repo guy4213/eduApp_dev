@@ -3403,6 +3403,20 @@ const saveCourseInstanceSchedule = async (instanceId: string) => {
       const lessonIdsToDelete = [...dbLessonIds].filter(id => !uiLessonIds.has(id));
       if (lessonIdsToDelete.length > 0) {
         console.log(`Deleting ${lessonIdsToDelete.length} lessons...`);
+
+        // *** FIX: First delete physical schedules linked to these lessons ***
+        const { error: deleteSchedulesError } = await supabase
+          .from('lesson_schedules')
+          .delete()
+          .in('lesson_id', lessonIdsToDelete)
+          .eq('is_generated', false);
+
+        if (deleteSchedulesError) {
+          console.error('Error deleting physical schedules:', deleteSchedulesError);
+          throw deleteSchedulesError;
+        }
+
+        // Now we can safely delete the lessons
         const { error: deleteError } = await supabase
           .from('lessons')
           .delete()
