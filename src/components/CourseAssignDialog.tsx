@@ -3565,7 +3565,14 @@ const handleFinalSave = async () => {
     // שלב 2: שמור את לוח הזמנים
     await saveCourseInstanceSchedule(newInstanceId);
 
-    // שלב 2.5: Generate/Update physical schedules
+    // *** שלב 2.5: שמור שיעורים ייחודיים קודם (לפני physical schedules!) ***
+    if (hasCustomLessons && instanceLessons.length > 0) {
+      console.log('[CourseAssignDialog] Saving instance lessons BEFORE generating schedules...');
+      await saveInstanceLessons(newInstanceId);
+      console.log('[CourseAssignDialog] Instance lessons saved successfully');
+    }
+
+    // שלב 3: Generate/Update physical schedules (אחרי שהשיעורים נשמרו!)
     try {
       // Fetch the saved schedule pattern
       const { data: schedulePattern, error: scheduleError } = await supabase
@@ -3587,7 +3594,7 @@ const handleFinalSave = async () => {
       if (schedulePattern) {
         const currentLessonMode = schedulePattern.course_instances.lesson_mode || lessonMode;
 
-        // Fetch lessons based on lesson_mode
+        // Fetch lessons based on lesson_mode (עכשיו הם כבר ב-DB!)
         const { data: instLessons } = await supabase
           .from('lessons')
           .select('id, title, course_id, order_index, course_instance_id')
@@ -3601,18 +3608,23 @@ const handleFinalSave = async () => {
           .is('course_instance_id', null)
           .order('order_index');
 
+        console.log('[CourseAssignDialog] Fetched lessons - instLessons:', instLessons?.length || 0, 'templLessons:', templLessons?.length || 0);
+
         let lessonsForScheduling: any[] = [];
         switch (currentLessonMode) {
           case 'custom_only':
             lessonsForScheduling = instLessons || [];
+            console.log('[CourseAssignDialog] Using custom_only lessons:', lessonsForScheduling.length);
             break;
           case 'combined':
             lessonsForScheduling = [...(templLessons || []), ...(instLessons || [])]
               .sort((a, b) => a.order_index - b.order_index);
+            console.log('[CourseAssignDialog] Using combined lessons:', lessonsForScheduling.length);
             break;
           case 'template':
           default:
             lessonsForScheduling = templLessons || [];
+            console.log('[CourseAssignDialog] Using template lessons:', lessonsForScheduling.length);
             break;
         }
 
@@ -3640,6 +3652,8 @@ const handleFinalSave = async () => {
             );
             console.log('[CourseAssignDialog] Generated physical schedules:', physicalSchedules.length);
           }
+        } else {
+          console.warn('[CourseAssignDialog] No lessons found for scheduling! lessonMode:', currentLessonMode);
         }
       }
     } catch (physicalScheduleError) {
@@ -3652,9 +3666,8 @@ const handleFinalSave = async () => {
       });
     }
 
-    // שלב 3: שמור שיעורים ייחודיים (אם קיימים)
+    // שלב 4: הודעת הצלחה
     if (hasCustomLessons && instanceLessons.length > 0) {
-      await saveInstanceLessons(newInstanceId);
       toast({
         title: "הצלחה",
         description: `ההקצאה נשמרה עם ${instanceLessons.length} שיעורים ייחודיים!`,
