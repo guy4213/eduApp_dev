@@ -2485,22 +2485,36 @@ const resetInstanceLessons = async () => {
   if (mode === 'edit' && actualInstanceId) {
     // **במצב עריכה - מחק מה-DB**
     try {
-      const { error } = await supabase
+      // *** FIX: First delete physical schedules, then lessons ***
+      // Step 1: Delete all physical schedules for this course instance
+      const { error: schedulesError } = await supabase
+        .from('lesson_schedules')
+        .delete()
+        .eq('course_instance_id', actualInstanceId)
+        .eq('is_generated', false);
+
+      if (schedulesError) {
+        console.error('Error deleting physical schedules:', schedulesError);
+        throw schedulesError;
+      }
+
+      // Step 2: Now we can safely delete the lessons
+      const { error: lessonsError } = await supabase
         .from('lessons')
         .delete()
         .eq('course_instance_id', actualInstanceId);
 
-      if (error) throw error;
+      if (lessonsError) throw lessonsError;
 
       setInstanceLessons([]);
       setHasCustomLessons(false);
       setLessonSource('none');
       setLessonMode('template'); // *** CRITICAL FIX: Reset to template mode ***
       setIsCombinedMode(false);
-      toast({ title: "נמחק", description: "כל השיעורים הייחודיים נמחקו מההקצאה" });
+      toast({ title: "נמחק", description: "כל השיעורים הייחודיים ולוחות הזמנים נמחקו מההקצאה" });
     } catch (error) {
       console.error('Error resetting lessons:', error);
-      toast({ title: "שגיאה", description: "שגיאה במחיקת שיעורים", variant: "destructive" });
+      toast({ title: "שגיאה", description: "שגיאה במחיקת שיעורים ייחודיים: " + (error?.message || ''), variant: "destructive" });
     }
   } else {
     // **במצב יצירה - רק ניקוי state**
