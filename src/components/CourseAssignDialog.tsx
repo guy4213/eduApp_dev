@@ -3534,13 +3534,13 @@ const handleFinalSave = async () => {
         const currentLessonMode = schedulePattern.course_instances.lesson_mode || lessonMode;
 
         // Fetch lessons based on lesson_mode
-        const { data: instanceLessons: instLessons } = await supabase
+        const { data: instLessons } = await supabase
           .from('lessons')
           .select('id, title, course_id, order_index, course_instance_id')
           .eq('course_instance_id', newInstanceId)
           .order('order_index');
 
-        const { data: templateLessons: templLessons } = await supabase
+        const { data: templLessons } = await supabase
           .from('lessons')
           .select('id, title, course_id, order_index, course_instance_id')
           .eq('course_id', schedulePattern.course_instances.course_id)
