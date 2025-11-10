@@ -1575,8 +1575,9 @@ export const updateSystemDefaults = async (defaults: Partial<SystemDefaults>): P
 
 export const getBlockedDates = async (forceRefresh: boolean = false): Promise<BlockedDate[]> => {
   const now = Date.now();
-  
+
   if (!forceRefresh && blockedDatesCache && (now - cacheTimestamp) < CACHE_DURATION) {
+    console.log('[getBlockedDates] Returning cached blocked dates:', blockedDatesCache);
     return blockedDatesCache;
   }
 
@@ -1585,9 +1586,11 @@ export const getBlockedDates = async (forceRefresh: boolean = false): Promise<Bl
       .from('blocked_dates')
       .select('*')
       .order('created_at', { ascending: false });
-    
+
     if (error) throw error;
-    
+
+    console.log('[getBlockedDates] Fetched from DB:', data);
+
     blockedDatesCache = data || [];
     cacheTimestamp = now;
     return data || [];
@@ -2431,7 +2434,8 @@ export const generatePhysicalSchedulesFromPattern = async (
       }
     });
 
-    console.log(`[generatePhysicalSchedules] Blocked dates: ${blockedDateSet.size > 0 ? Array.from(blockedDateSet).join(', ') : 'none'}`);
+    console.log(`[generatePhysicalSchedules] Blocked dates (${blockedDateSet.size}):`, blockedDateSet.size > 0 ? Array.from(blockedDateSet) : 'none');
+    console.log(`[generatePhysicalSchedules] Raw blocked dates from DB:`, blockedDates);
 
     const isDateBlockedSync = (date: Date): boolean => {
       const dateStr = date.toISOString().split('T')[0];
