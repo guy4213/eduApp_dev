@@ -56,43 +56,58 @@ console.log('assignment in popup:', assignment);
         throw lessonsError;
       }
       
+      // שלב 1: מחיקת כל ה-physical schedules של ההקצאה (גם תבנית וגם ייחודיים)
+      // צריך למחוק אותם לפני מחיקת ה-lessons בגלל Foreign Key constraint
+      const { error: allSchedulesDeleteError } = await supabase
+        .from('lesson_schedules')
+        .delete()
+        .eq('course_instance_id', assignment.instance_id);
+
+      if (allSchedulesDeleteError) {
+        console.error('שגיאה במחיקת כל התזמונים הפיזיים:', allSchedulesDeleteError);
+        throw allSchedulesDeleteError;
+      }
+
+      console.log('כל התזמונים הפיזיים נמחקו בהצלחה');
+
+      // שלב 2: מחיקת שיעורים ייחודיים (אם יש)
       if (instanceLessons && instanceLessons.length > 0) {
         console.log(`נמצאו ${instanceLessons.length} שיעורים ייחודיים למחיקה`);
-        
+
         // מחיקת משימות של השיעורים הייחודיים
         const lessonIds = instanceLessons.map(lesson => lesson.id);
         const { error: tasksDeleteError } = await supabase
           .from('lesson_tasks')
           .delete()
           .in('lesson_id', lessonIds);
-        
+
         if (tasksDeleteError) {
           console.error('שגיאה במחיקת משימות:', tasksDeleteError);
           throw tasksDeleteError;
         }
-        
+
         console.log('משימות של שיעורים ייחודיים נמחקו בהצלחה');
-        
+
         // מחיקת השיעורים הייחודיים עצמם
         const { error: lessonsDeleteError } = await supabase
           .from('lessons')
           .delete()
           .eq('course_instance_id', assignment.instance_id);
-        
+
         if (lessonsDeleteError) {
           console.error('שגיאה במחיקת שיעורים ייחודיים:', lessonsDeleteError);
           throw lessonsDeleteError;
         }
-        
+
         console.log('שיעורים ייחודיים נמחקו בהצלחה');
       }
-      
-      // שלב 2: מחיקת לוח זמנים של ההקצאה
+
+      // שלב 3: מחיקת לוח זמנים (pattern) של ההקצאה
       const { error: scheduleDeleteError } = await supabase
         .from('course_instance_schedules')
         .delete()
         .eq('course_instance_id', assignment.instance_id);
-      
+
       if (scheduleDeleteError) {
         console.error('שגיאה במחיקת לוח זמנים:', scheduleDeleteError);
         // לא נזרוק שגיאה כאן כי יכול להיות שאין לוח זמנים
@@ -100,12 +115,8 @@ console.log('assignment in popup:', assignment);
       } else {
         console.log('לוח זמנים נמחק בהצלחה');
       }
-      
-      // שלב 3: מחיקת שיעורים מתוזמנים (lesson_schedules) - אם יש
 
-      
-      
-      // שלב 5: מחיקת ההקצאה עצמה
+      // שלב 4: מחיקת ההקצאה עצמה
       const { error: instanceDeleteError } = await supabase
         .from('course_instances')
         .delete()

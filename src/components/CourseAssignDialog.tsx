@@ -1774,6 +1774,16 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   getSystemDefaults,
   getDisabledDatesForCalendar,
   isDateBlocked,
@@ -1901,6 +1911,7 @@ const [draggedLessonIndex, setDraggedLessonIndex] = useState<number | null>(null
 const [lessonSource, setLessonSource] = useState<'none' | 'template' | 'scratch'>('none');
 const [lessonMode, setLessonMode] = useState<'template' | 'custom_only' | 'combined'|'none'>('template');
 const [isCombinedMode, setIsCombinedMode] = useState(false);
+const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
 
 console.log(" instance id from dialog assign ",instanceId)
   const isMounted = useRef(false);
@@ -4235,7 +4246,7 @@ const renderCustomLessonsDialog = () => (
           <div className="flex gap-2">
             {hasCustomLessons && (
               <>
-                <Button type="button" variant="destructive" onClick={resetInstanceLessons}>
+                <Button type="button" variant="destructive" onClick={() => setShowDeleteConfirmation(true)}>
                   מחק הכל
                 </Button>
                 
