@@ -3520,24 +3520,28 @@ const saveCourseInstanceSchedule = async (instanceId: string) => {
       if (instanceLessons.length > 0) {
         const lessonsToUpsert = instanceLessons.map((lesson, index) => {
             const { tasks, lesson_tasks, ...rest } = lesson;
-            
-            // If the ID is temporary or invalid, it will be handled by upsert correctly
-            // by treating it as an insert. We only keep valid UUIDs.
-            if (rest.id && !rest.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-                delete rest.id;
-            }
 
-            return {
-                ...rest,
+            // Build the lesson object without id first
+            const lessonData: any = {
                 course_id: courseId || editData?.course_id,
                 course_instance_id: assignmentInstanceId,
-                // In combined mode, unique lessons are appended after template lessons
+                title: rest.title,
+                description: rest.description,
                 order_index: (lessonMode === 'combined' ? templateLessons.length : 0) + index,
-                // Ensure non-nullable fields have a value
                 scheduled_start: lesson.scheduled_start || new Date().toISOString(),
                 scheduled_end: lesson.scheduled_end || new Date().toISOString(),
             };
+
+            // Only include id if it's a valid UUID (for updates)
+            if (rest.id && rest.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+                lessonData.id = rest.id;
+            }
+            // Otherwise, let Supabase generate a new UUID (for inserts)
+
+            return lessonData;
         });
+
+        console.log('[saveInstanceLessons] Upserting lessons:', lessonsToUpsert.length);
 
         // 5. Upsert the lessons. This will INSERT new ones and UPDATE existing ones based on primary key.
         const { data: savedLessons, error: upsertError } = await supabase
