@@ -171,7 +171,21 @@ console.log('assignment in popup:', assignment);
         console.log('שיעורים מתוזמנים נמחקו בהצלחה');
       }
 
-      // שלב 7: מחיקת ההקצאה עצמה
+      // שלב 7: מחיקת תלמידים המשויכים להקצאה (students)
+      const { error: studentsDeleteError } = await supabase
+        .from('students')
+        .delete()
+        .eq('course_instance_id', assignment.instance_id);
+
+      if (studentsDeleteError) {
+        console.error('שגיאה במחיקת תלמידים:', studentsDeleteError);
+        // לא נזרוק שגיאה כי יכול להיות שאין תלמידים
+        console.log('ממשיכים למחיקת ההקצאה למרות שגיאה בתלמידים');
+      } else {
+        console.log('תלמידים נמחקו בהצלחה');
+      }
+
+      // שלב 8: מחיקת ההקצאה עצמה
       const { error: instanceDeleteError } = await supabase
         .from('course_instances')
         .delete()
