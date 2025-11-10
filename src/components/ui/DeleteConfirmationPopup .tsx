@@ -101,7 +101,35 @@ console.log('assignment in popup:', assignment);
         console.log('לוח זמנים נמחק בהצלחה');
       }
       
-      // שלב 3: מחיקת דוחות שיעור (lesson_reports)
+      // שלב 3: מחיקת נוכחות שיעורים (lesson_attendance)
+      // קודם כל נמצא את כל הדוחות של ההקצאה
+      const { data: lessonReportsData, error: findReportsError } = await supabase
+        .from('lesson_reports')
+        .select('id')
+        .eq('course_instance_id', assignment.instance_id);
+
+      if (findReportsError) {
+        console.error('שגיאה בחיפוש דוחות שיעור:', findReportsError);
+      } else if (lessonReportsData && lessonReportsData.length > 0) {
+        console.log(`נמצאו ${lessonReportsData.length} דוחות שיעור`);
+
+        // מחיקת רשומות נוכחות של הדוחות
+        const reportIds = lessonReportsData.map(report => report.id);
+        const { error: attendanceDeleteError } = await supabase
+          .from('lesson_attendance')
+          .delete()
+          .in('lesson_report_id', reportIds);
+
+        if (attendanceDeleteError) {
+          console.error('שגיאה במחיקת נוכחות שיעורים:', attendanceDeleteError);
+          // לא נזרוק שגיאה כי יכול להיות שאין נוכחות
+          console.log('ממשיכים למחיקת ההקצאה למרות שגיאה בנוכחות');
+        } else {
+          console.log('נוכחות שיעורים נמחקה בהצלחה');
+        }
+      }
+
+      // שלב 4: מחיקת דוחות שיעור (lesson_reports)
       const { error: reportsDeleteError } = await supabase
         .from('lesson_reports')
         .delete()
@@ -115,7 +143,7 @@ console.log('assignment in popup:', assignment);
         console.log('דוחות שיעור נמחקו בהצלחה');
       }
 
-      // שלב 4: מחיקת שיעורים מדווחים (reported_lesson_instances)
+      // שלב 5: מחיקת שיעורים מדווחים (reported_lesson_instances)
       const { error: reportedLessonsDeleteError } = await supabase
         .from('reported_lesson_instances')
         .delete()
@@ -129,7 +157,7 @@ console.log('assignment in popup:', assignment);
         console.log('שיעורים מדווחים נמחקו בהצלחה');
       }
 
-      // שלב 5: מחיקת שיעורים מתוזמנים ישנים (lesson_schedules) - אם יש
+      // שלב 6: מחיקת שיעורים מתוזמנים ישנים (lesson_schedules) - אם יש
       const { error: schedulesDeleteError } = await supabase
         .from('lesson_schedules')
         .delete()
@@ -143,7 +171,7 @@ console.log('assignment in popup:', assignment);
         console.log('שיעורים מתוזמנים נמחקו בהצלחה');
       }
 
-      // שלב 6: מחיקת ההקצאה עצמה
+      // שלב 7: מחיקת ההקצאה עצמה
       const { error: instanceDeleteError } = await supabase
         .from('course_instances')
         .delete()
