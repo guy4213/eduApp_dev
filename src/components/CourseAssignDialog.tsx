@@ -2175,18 +2175,37 @@ const fetchTemplateLessons = async (idToFetch?: string) => {
     const actualInstanceId = instanceId || editData?.instance_id;
     if (!actualInstanceId) return;
     try {
-      const { data, error } = await supabase.from('lessons').select('id, title, description, order_index, lesson_tasks(*)').eq('course_instance_id', actualInstanceId).order('order_index');
+      console.log('[loadInstanceLessons] Loading lessons for instance:', actualInstanceId);
+
+      const { data, error } = await supabase
+        .from('lessons')
+        .select('id, title, description, order_index, course_instance_id, lesson_tasks(*)')
+        .eq('course_instance_id', actualInstanceId)
+        .order('order_index');
+
       if (error) throw error;
+
+      console.log('[loadInstanceLessons] Found lessons in DB:', data?.length || 0);
       if (data && data.length > 0) {
-        const formattedLessons = data.map(l => ({...l, description: l.description || '', tasks: (l.lesson_tasks as any[]) || []}));
+        console.log('[loadInstanceLessons] Lesson details:', data.map(l => ({ id: l.id, title: l.title, order_index: l.order_index })));
+      }
+
+      if (data && data.length > 0) {
+        const formattedLessons = data.map(l => ({
+          ...l,
+          description: l.description || '',
+          tasks: (l.lesson_tasks as any[]) || []
+        }));
         setInstanceLessons(formattedLessons);
         setHasCustomLessons(true);
+        console.log('[loadInstanceLessons] Set hasCustomLessons = true');
       } else {
         setInstanceLessons([]);
         setHasCustomLessons(false);
+        console.log('[loadInstanceLessons] No custom lessons found, set hasCustomLessons = false');
       }
     } catch (error) {
-      console.error('Error loading instance lessons:', error);
+      console.error('[loadInstanceLessons] Error loading instance lessons:', error);
     }
   };
   
@@ -2588,11 +2607,13 @@ const resetInstanceLessons = async () => {
       }
 
       // Update UI state
+      console.log('[resetInstanceLessons] BEFORE state update - hasCustomLessons:', hasCustomLessons, 'instanceLessons.length:', instanceLessons.length);
       setInstanceLessons([]);
       setHasCustomLessons(false);
       setLessonSource('none');
       setLessonMode('template');
       setIsCombinedMode(false);
+      console.log('[resetInstanceLessons] AFTER state update - State should now be: hasCustomLessons=false, instanceLessons=[], lessonMode=template');
 
       toast({
         title: "חזרה לברירת מחדל",
@@ -3475,7 +3496,8 @@ const saveCourseInstanceSchedule = async (instanceId: string) => {
   // =================================================================
   const saveInstanceLessons = async (assignmentInstanceId: string) => {
     try {
-      console.log(`Syncing unique lessons for instance ${assignmentInstanceId} with mode: ${lessonMode}`);
+      console.log(`[saveInstanceLessons] START - Syncing unique lessons for instance ${assignmentInstanceId} with mode: ${lessonMode}`);
+      console.log(`[saveInstanceLessons] Current instanceLessons:`, instanceLessons.map(l => ({ id: l.id, title: l.title })));
 
       // This function ONLY manages the UNIQUE lessons ('instanceLessons').
       // The 'combined' view is a display-time concern handled by the assignments page.
@@ -3483,18 +3505,22 @@ const saveCourseInstanceSchedule = async (instanceId: string) => {
       // 1. Get all lesson IDs currently in the DB for this instance
       const { data: dbLessons, error: fetchError } = await supabase
         .from('lessons')
-        .select('id')
+        .select('id, title')
         .eq('course_instance_id', assignmentInstanceId);
       if (fetchError) throw fetchError;
-      const dbLessonIds = new Set(dbLessons.map(l => l.id));
+      const dbLessonIds = new Set(dbLessons?.map(l => l.id) || []);
+      console.log(`[saveInstanceLessons] Lessons in DB:`, dbLessons?.length || 0, dbLessons?.map(l => ({ id: l.id, title: l.title })));
 
       // 2. Get all lesson IDs currently in the UI state (excluding new temporary ones)
       const uiLessonIds = new Set(instanceLessons.map(l => l.id).filter(id => id && !id.toString().startsWith('temp-')));
+      console.log(`[saveInstanceLessons] Lessons in UI (non-temp IDs):`, uiLessonIds.size, Array.from(uiLessonIds));
 
       // 3. Find lessons to DELETE (in DB but not in UI)
       const lessonIdsToDelete = [...dbLessonIds].filter(id => !uiLessonIds.has(id));
+      console.log(`[saveInstanceLessons] Lessons to DELETE:`, lessonIdsToDelete.length, lessonIdsToDelete);
+
       if (lessonIdsToDelete.length > 0) {
-        console.log(`Deleting ${lessonIdsToDelete.length} lessons...`);
+        console.log(`[saveInstanceLessons] Deleting ${lessonIdsToDelete.length} lessons...`);
 
         // *** Step 1: Delete ALL schedules linked to these lessons ***
         const { error: deleteSchedulesError } = await supabase
@@ -3662,19 +3688,24 @@ const saveCourseInstanceSchedule = async (instanceId: string) => {
 const handleFinalSave = async () => {
   setLoading(true);
   try {
+    console.log('[handleFinalSave] START - lessonMode:', lessonMode, 'hasCustomLessons:', hasCustomLessons, 'instanceLessons.length:', instanceLessons.length);
+
     // שלב 1: שמור/עדכן את ההקצאה
     const newInstanceId = await handleCourseAssignment();
     if (!newInstanceId) throw new Error("Failed to create or update course instance.");
-    console.log("handlesave lesson_mode as: ", lessonMode);
+    console.log("[handleFinalSave] Course instance saved with ID:", newInstanceId, "lesson_mode:", lessonMode);
 
     // שלב 2: שמור את לוח הזמנים
     await saveCourseInstanceSchedule(newInstanceId);
 
     // *** שלב 2.5: שמור שיעורים ייחודיים קודם (לפני physical schedules!) ***
+    console.log('[handleFinalSave] Checking if should save instance lessons - hasCustomLessons:', hasCustomLessons, 'instanceLessons.length:', instanceLessons.length);
     if (hasCustomLessons && instanceLessons.length > 0) {
-      console.log('[CourseAssignDialog] Saving instance lessons BEFORE generating schedules...');
+      console.log('[handleFinalSave] ✅ WILL SAVE instance lessons. Lessons:', instanceLessons.map(l => ({ id: l.id, title: l.title })));
       await saveInstanceLessons(newInstanceId);
-      console.log('[CourseAssignDialog] Instance lessons saved successfully');
+      console.log('[handleFinalSave] Instance lessons saved successfully');
+    } else {
+      console.log('[handleFinalSave] ❌ NOT saving instance lessons (hasCustomLessons:', hasCustomLessons, 'length:', instanceLessons.length, ')');
     }
 
     // שלב 3: Generate/Update physical schedules (אחרי שהשיעורים נשמרו!)
