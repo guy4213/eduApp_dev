@@ -4364,7 +4364,7 @@ const renderCustomLessonsDialog = () => (
           <div className="flex gap-2">
             {hasCustomLessons && (
               <>
-                   <Button type="button"  onClick={() => {console.log("lessonMode",lessonMode); setLessonMode("custom_only");
+                   <Button type="button"  onClick={() => {console.log("lessonMode",lessonMode); setLessonMode("template");
                     setHasCustomLessons(false); setStep(2); setShowCustomLessonsDialog(false);}}>
             חזרה לברירת מחדל    
             </Button>
