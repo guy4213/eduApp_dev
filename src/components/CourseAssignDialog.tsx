@@ -3562,29 +3562,16 @@ const saveCourseInstanceSchedule = async (instanceId: string) => {
         console.log('[saveInstanceLessons] Lessons deleted successfully');
       }
 
-      // 4. Prepare lessons to be UPSERTED (new or updated)
+      // 4. Separate lessons into UPDATE (existing UUIDs) and INSERT (new temp IDs)
       if (instanceLessons.length > 0) {
-        console.log('[saveInstanceLessons] Preparing to upsert', instanceLessons.length, 'lessons');
-        console.log('[saveInstanceLessons] Raw instanceLessons:', instanceLessons.map(l => ({
-          id: l.id,
-          title: l.title,
-          hasId: !!l.id,
-          idType: typeof l.id,
-          isUUID: l.id ? l.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) : false
-        })));
+        console.log('[saveInstanceLessons] Processing', instanceLessons.length, 'lessons');
 
-        const lessonsToUpsert = instanceLessons.map((lesson, index) => {
+        const lessonsToUpdate: any[] = [];
+        const lessonsToInsert: any[] = [];
+
+        instanceLessons.forEach((lesson, index) => {
             const { tasks, lesson_tasks, ...rest } = lesson;
 
-            console.log(`[saveInstanceLessons] Processing lesson ${index}:`, {
-              originalId: lesson.id,
-              restId: rest.id,
-              hasRestId: !!rest.id,
-              restIdType: typeof rest.id,
-              restKeys: Object.keys(rest)
-            });
-
-            // Build the lesson object without id first
             const lessonData: any = {
                 course_id: courseId || editData?.course_id,
                 course_instance_id: assignmentInstanceId,
@@ -3595,35 +3582,61 @@ const saveCourseInstanceSchedule = async (instanceId: string) => {
                 scheduled_end: lesson.scheduled_end || new Date().toISOString(),
             };
 
-            // Only include id if it's a valid UUID (for updates)
-            if (rest.id && typeof rest.id === 'string' && rest.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-                lessonData.id = rest.id;
-                console.log(`[saveInstanceLessons] ✅ Including UUID id for lesson ${index}:`, rest.id);
-            } else {
-                console.log(`[saveInstanceLessons] ⚠️ Skipping id for lesson ${index} (will be auto-generated). rest.id:`, rest.id);
-            }
+            // Check if this is an existing lesson (valid UUID) or new lesson (temp ID)
+            const isUUID = rest.id && typeof rest.id === 'string' && rest.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
 
-            console.log(`[saveInstanceLessons] Final lessonData for lesson ${index}:`, lessonData);
-            return lessonData;
+            if (isUUID) {
+                // Existing lesson - UPDATE
+                lessonData.id = rest.id;
+                lessonsToUpdate.push(lessonData);
+                console.log(`[saveInstanceLessons] ✅ Lesson ${index} will be UPDATED (UUID: ${rest.id})`);
+            } else {
+                // New lesson - INSERT (no id field, let DB generate UUID)
+                lessonsToInsert.push(lessonData);
+                console.log(`[saveInstanceLessons] ✅ Lesson ${index} will be INSERTED (temp id: ${rest.id})`);
+            }
         });
 
-        console.log('[saveInstanceLessons] Upserting lessons:', lessonsToUpsert.length);
-        console.log('[saveInstanceLessons] Full lessonsToUpsert array:', JSON.stringify(lessonsToUpsert, null, 2));
+        console.log('[saveInstanceLessons] Will UPDATE:', lessonsToUpdate.length, 'lessons');
+        console.log('[saveInstanceLessons] Will INSERT:', lessonsToInsert.length, 'lessons');
 
-        // 5. Upsert the lessons. This will INSERT new ones and UPDATE existing ones based on primary key.
-        console.log('[saveInstanceLessons] About to execute upsert with data:', lessonsToUpsert);
-        const { data: savedLessons, error: upsertError } = await supabase
+        let savedLessons: any[] = [];
+
+        // 5a. UPDATE existing lessons
+        if (lessonsToUpdate.length > 0) {
+          console.log('[saveInstanceLessons] Updating existing lessons...');
+          const { data: updatedLessons, error: updateError } = await supabase
             .from('lessons')
-            .upsert(lessonsToUpsert, { onConflict: 'id' })
+            .upsert(lessonsToUpdate, { onConflict: 'id' })
             .select('id, title');
 
-        if (upsertError) {
-          console.error('[saveInstanceLessons] ❌ UPSERT ERROR:', upsertError);
-          console.error('[saveInstanceLessons] Failed data that was sent:', JSON.stringify(lessonsToUpsert, null, 2));
-          throw upsertError;
+          if (updateError) {
+            console.error('[saveInstanceLessons] ❌ UPDATE ERROR:', updateError);
+            throw updateError;
+          }
+
+          savedLessons.push(...(updatedLessons || []));
+          console.log('[saveInstanceLessons] ✅ Updated', updatedLessons?.length, 'lessons');
         }
 
-        console.log('[saveInstanceLessons] ✅ Upsert successful, saved lessons:', savedLessons);
+        // 5b. INSERT new lessons
+        if (lessonsToInsert.length > 0) {
+          console.log('[saveInstanceLessons] Inserting new lessons...');
+          const { data: insertedLessons, error: insertError } = await supabase
+            .from('lessons')
+            .insert(lessonsToInsert)
+            .select('id, title');
+
+          if (insertError) {
+            console.error('[saveInstanceLessons] ❌ INSERT ERROR:', insertError);
+            throw insertError;
+          }
+
+          savedLessons.push(...(insertedLessons || []));
+          console.log('[saveInstanceLessons] ✅ Inserted', insertedLessons?.length, 'lessons');
+        }
+
+        console.log('[saveInstanceLessons] ✅ Total saved lessons:', savedLessons.length);
 
         // 6. Sync tasks for the saved lessons
         if (savedLessons && savedLessons.length > 0) {
