@@ -3496,24 +3496,44 @@ const saveCourseInstanceSchedule = async (instanceId: string) => {
       if (lessonIdsToDelete.length > 0) {
         console.log(`Deleting ${lessonIdsToDelete.length} lessons...`);
 
-        // *** FIX: First delete ALL schedules linked to these lessons ***
+        // *** Step 1: Delete ALL schedules linked to these lessons ***
         const { error: deleteSchedulesError } = await supabase
           .from('lesson_schedules')
           .delete()
           .in('lesson_id', lessonIdsToDelete);
-          // Removed .eq('is_generated', false) - delete ALL schedules
 
         if (deleteSchedulesError) {
-          console.error('Error deleting schedules for lessons:', deleteSchedulesError);
+          console.error('[saveInstanceLessons] Error deleting schedules for lessons:', deleteSchedulesError);
           throw deleteSchedulesError;
         }
 
-        // Now we can safely delete the lessons
+        console.log('[saveInstanceLessons] Schedules deleted for lessons');
+
+        // *** Step 2: Delete ALL tasks linked to these lessons ***
+        const { error: deleteTasksError } = await supabase
+          .from('lesson_tasks')
+          .delete()
+          .in('lesson_id', lessonIdsToDelete);
+
+        if (deleteTasksError) {
+          console.error('[saveInstanceLessons] Error deleting tasks for lessons:', deleteTasksError);
+          throw deleteTasksError;
+        }
+
+        console.log('[saveInstanceLessons] Tasks deleted for lessons');
+
+        // *** Step 3: Now we can safely delete the lessons ***
         const { error: deleteError } = await supabase
           .from('lessons')
           .delete()
           .in('id', lessonIdsToDelete);
-        if (deleteError) throw deleteError;
+
+        if (deleteError) {
+          console.error('[saveInstanceLessons] Error deleting lessons:', deleteError);
+          throw deleteError;
+        }
+
+        console.log('[saveInstanceLessons] Lessons deleted successfully');
       }
 
       // 4. Prepare lessons to be UPSERTED (new or updated)
