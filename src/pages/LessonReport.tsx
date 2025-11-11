@@ -46,7 +46,6 @@ import { he } from "date-fns/locale";
 import { useMemo } from "react";
 import { Upload, FileSpreadsheet } from "lucide-react";
 import * as XLSX from 'xlsx';
-import { postponeScheduleToNextDay } from "@/utils/scheduleUtils";
 
 
 const LessonReport = () => {
@@ -1994,7 +1993,21 @@ const handleSubmit = async () => {
       if (scheduleIdToPostpone) {
         console.log('[LessonReport] Postponing schedule:', scheduleIdToPostpone);
         try {
-          const postponeResult = await postponeScheduleToNextDay(scheduleIdToPostpone, reportData.id);
+          // Call Edge Function instead of direct DB operations
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/postpone-schedule`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            },
+            body: JSON.stringify({
+              scheduleId: scheduleIdToPostpone,
+              reportId: reportData.id
+            })
+          });
+
+          const postponeResult = await response.json();
+
           if (postponeResult.success) {
             console.log('[LessonReport] Schedule postponed successfully:', postponeResult.message);
             toast({
