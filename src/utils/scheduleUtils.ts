@@ -2927,7 +2927,7 @@ export const updatePhysicalSchedules = async (
 export const postponeScheduleToNextDay = async (
   scheduleId: string,
   reportId: string
-): Promise<{ success: boolean; message: string; newScheduleId?: string }> => {
+): Promise<{ success: boolean; message: string }> => {
   try {
     console.log(`[postponeSchedule] Postponing schedule ${scheduleId} with report ${reportId}`);
 
@@ -3081,33 +3081,32 @@ export const postponeScheduleToNextDay = async (
 
     console.log('[postponeSchedule] New schedule date:', newStart.toISOString());
 
-    // 5. Create new schedule (duplicate)
-    const { data: newSchedule, error: insertError } = await supabase
+    // 5. Update the existing schedule (instead of creating a duplicate)
+    const { data: updatedSchedule, error: updateError } = await supabase
       .from('lesson_schedules')
-      .insert({
-        course_instance_id: originalSchedule.course_instance_id,
-        lesson_id: originalSchedule.lesson_id,
-        lesson_number: originalSchedule.lesson_number,
+      .update({
         scheduled_start: newStart.toISOString(),
-        scheduled_end: newEnd.toISOString(),
-        is_generated: false
+        scheduled_end: newEnd.toISOString()
       })
+      .eq('id', scheduleId)
       .select()
       .single();
 
-    if (insertError || !newSchedule) {
-      console.error('[postponeSchedule] Error creating new schedule:', insertError);
-      return { success: false, message: 'שגיאה ביצירת תזמון חדש' };
+    if (updateError || !updatedSchedule) {
+      console.error('[postponeSchedule] Error updating schedule:', updateError);
+      return { success: false, message: 'שגיאה בעדכון תזמון' };
     }
 
-    console.log('[postponeSchedule] Created new schedule:', newSchedule.id);
+    console.log('[postponeSchedule] Updated schedule:', updatedSchedule.id, 'to', newStart.toISOString());
 
     // 6. Chain all subsequent schedules (shift them forward by one day of pattern)
+    // Get schedules that start at or after the NEW date (not the original date)
     const { data: subsequentSchedules, error: fetchSubError } = await supabase
       .from('lesson_schedules')
       .select('*')
       .eq('course_instance_id', originalSchedule.course_instance_id)
-      .gt('scheduled_start', originalSchedule.scheduled_start)
+      .gte('scheduled_start', newStart.toISOString())
+      .neq('id', scheduleId) // Exclude the schedule we just updated
       .order('scheduled_start', { ascending: true });
 
     if (!fetchSubError && subsequentSchedules && subsequentSchedules.length > 0) {
@@ -3167,7 +3166,7 @@ export const postponeScheduleToNextDay = async (
     }
 
     const message = `התזמון נדחה ליום ${nextDate.toLocaleDateString('he-IL')} ו-${subsequentSchedules?.length || 0} תזמונים נשרשרו קדימה`;
-    return { success: true, message, newScheduleId: newSchedule.id };
+    return { success: true, message };
 
   } catch (error) {
     console.error('[postponeSchedule] Error:', error);
