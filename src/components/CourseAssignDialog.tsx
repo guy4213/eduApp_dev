@@ -3698,14 +3698,44 @@ const handleFinalSave = async () => {
     // שלב 2: שמור את לוח הזמנים
     await saveCourseInstanceSchedule(newInstanceId);
 
-    // *** שלב 2.5: שמור שיעורים ייחודיים קודם (לפני physical schedules!) ***
-    console.log('[handleFinalSave] Checking if should save instance lessons - hasCustomLessons:', hasCustomLessons, 'instanceLessons.length:', instanceLessons.length);
-    if (hasCustomLessons && instanceLessons.length > 0) {
+    // *** שלב 2.5: טיפול בשיעורים ייחודיים ***
+    console.log('[handleFinalSave] Checking lesson mode - lessonMode:', lessonMode, 'hasCustomLessons:', hasCustomLessons, 'instanceLessons.length:', instanceLessons.length);
+
+    if (lessonMode === 'template') {
+      // אם המצב הוא 'template', מחק את כל השיעורים הייחודיים (אם קיימים)
+      console.log('[handleFinalSave] Mode is TEMPLATE - ensuring no custom lessons exist in DB');
+      try {
+        // First check if there are any custom lessons in DB
+        const { data: existingLessons } = await supabase
+          .from('lessons')
+          .select('id')
+          .eq('course_instance_id', newInstanceId);
+
+        if (existingLessons && existingLessons.length > 0) {
+          console.log('[handleFinalSave] Found', existingLessons.length, 'custom lessons to delete for template mode');
+          const lessonIds = existingLessons.map(l => l.id);
+
+          // Delete schedules
+          await supabase.from('lesson_schedules').delete().in('lesson_id', lessonIds);
+          // Delete tasks
+          await supabase.from('lesson_tasks').delete().in('lesson_id', lessonIds);
+          // Delete lessons
+          await supabase.from('lessons').delete().eq('course_instance_id', newInstanceId);
+
+          console.log('[handleFinalSave] ✅ Deleted all custom lessons for template mode');
+        } else {
+          console.log('[handleFinalSave] ✅ No custom lessons to delete (already clean)');
+        }
+      } catch (error) {
+        console.error('[handleFinalSave] Error cleaning custom lessons for template mode:', error);
+      }
+    } else if (hasCustomLessons && instanceLessons.length > 0) {
+      // אם יש שיעורים ייחודיים, שמור אותם
       console.log('[handleFinalSave] ✅ WILL SAVE instance lessons. Lessons:', instanceLessons.map(l => ({ id: l.id, title: l.title })));
       await saveInstanceLessons(newInstanceId);
       console.log('[handleFinalSave] Instance lessons saved successfully');
     } else {
-      console.log('[handleFinalSave] ❌ NOT saving instance lessons (hasCustomLessons:', hasCustomLessons, 'length:', instanceLessons.length, ')');
+      console.log('[handleFinalSave] ❌ No instance lessons to save');
     }
 
     // שלב 3: Generate/Update physical schedules (אחרי שהשיעורים נשמרו!)
