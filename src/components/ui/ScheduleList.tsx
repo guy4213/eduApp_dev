@@ -223,7 +223,7 @@ const sortedLessons = lessons.sort((a, b) => {
         >
           ❌ לא התקיים
         </span>
-        {canEdit && (
+        { (
           <button
             onClick={() => {
               const reportId = getReportIdForLesson(item);
@@ -258,7 +258,7 @@ const sortedLessons = lessons.sort((a, b) => {
         >
           ⚠️ לא התנהל כשורה
         </span>
-        {canEdit && (
+        { (
           <button
             onClick={() => {
               const reportId = getReportIdForLesson(item);
@@ -290,7 +290,7 @@ const sortedLessons = lessons.sort((a, b) => {
         <span className="inline-flex items-center gap-2 text-base font-bold text-green-700 bg-green-100 px-4 py-2 rounded-full">
           <Check className="w-5 h-5" /> דווח
         </span>
-        {canEdit && (
+        { (
           <button
             onClick={() => {
               const reportId = getReportIdForLesson(item);

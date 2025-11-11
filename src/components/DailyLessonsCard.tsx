@@ -426,7 +426,7 @@ const renderStatusBadge = () => {
           <Check className="w-6 h-6 ml-2" />
           דווח
         </button>
-        {canEdit && lessonStatus.reportId && (
+        { lessonStatus.reportId && (
           <button
             onClick={() =>
               nav(
@@ -475,7 +475,7 @@ const renderStatusBadge = () => {
         >
           ❌ לא התקיים
         </button>
-        {canEdit && lessonStatus.reportId && (
+        { lessonStatus.reportId && (
           <button
             onClick={() =>
               nav(
@@ -502,7 +502,7 @@ const renderStatusBadge = () => {
         >
           ⚠️ לא התנהל כשורה
         </button>
-        {canEdit && lessonStatus.reportId && (
+        { lessonStatus.reportId && (
           <button
             onClick={() =>
               nav(
