@@ -532,7 +532,7 @@ const CourseLessonsSection = ({ lessons, onLessonsChange, courseStartDate, cours
     const updatedLessons = lessons.map(lesson => {
       if (lesson.id === lessonId) {
         const task: Task = {
-          id: `task-${Date.now()}`,
+          id: `temp-task-${Date.now()}`,
           title: newTask.title,
           description: newTask.description,
           estimated_duration: newTask.estimated_duration,
@@ -565,7 +565,7 @@ const CourseLessonsSection = ({ lessons, onLessonsChange, courseStartDate, cours
     if (!newLesson.title.trim()) return;
 
     const lesson: Lesson = {
-      id: `lesson-${Date.now()}`,
+      id: `temp-lesson-${Date.now()}`,
       title: newLesson.title,
       description: newLesson.description,
       order_index: lessons.length,
