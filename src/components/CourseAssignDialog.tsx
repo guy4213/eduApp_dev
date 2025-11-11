@@ -4364,8 +4364,8 @@ const renderCustomLessonsDialog = () => (
           <div className="flex gap-2">
             {hasCustomLessons && (
               <>
-                   <Button type="button"  onClick={() => {console.log("lessonMode",lessonMode); setLessonMode("template");
-                    setHasCustomLessons(false); setStep(2); setShowCustomLessonsDialog(false);}}>
+                   <Button type="button"  onClick={() => { setLessonMode("template");
+                    setHasCustomLessons(false); setStep(2); setShowCustomLessonsDialog(false); console.log("lessonMode",lessonMode);}}>
             חזרה לברירת מחדל    
             </Button>
                 <Button type="button" variant="destructive" onClick={() =>  {setShowDeleteConfirmation(true) }}>
