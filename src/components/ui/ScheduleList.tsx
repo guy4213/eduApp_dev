@@ -209,93 +209,143 @@ const sortedLessons = lessons.sort((a, b) => {
         : "";
       const lessonStatus = reportStatusMap.get(statusKey);
 
-      const renderStatusBadge = () => {
-        if (lessonStatus?.isCompleted === false) {
-          return (
-            <span
-              className="inline-flex items-center gap-2 text-base font-bold px-4 py-2 rounded-full text-white"
-              style={{ backgroundColor: "#FFA500" }}
-            >
-              ❌ לא התקיים
-            </span>
-          );
-        }
+     const renderStatusBadge = () => {
+  if (lessonStatus?.isCompleted === false) {
+    const canEdit = ["admin", "pedagogical_manager"].includes(
+      user.user_metadata.role
+    );
 
-        if (lessonStatus?.isCompleted && lessonStatus?.isLessonOk === false) {
-          return (
-            <span
-              className="inline-flex items-center gap-2 text-base font-bold px-4 py-2 rounded-full text-white"
-              style={{ backgroundColor: "#FF0000" }}
-            >
-              ⚠️ לא התנהל כשורה
-            </span>
-          );
-        }
-
-        if (lessonStatus?.isCompleted === true) {
-          const canEdit = ["admin", "pedagogical_manager"].includes(
-            user.user_metadata.role
-          );
-          return (
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-2 text-base font-bold text-green-700 bg-green-100 px-4 py-2 rounded-full">
-                <Check className="w-5 h-5" /> דווח
-              </span>
-              {canEdit && (
-                <button
-                  onClick={() => {
-                    const reportId = getReportIdForLesson(item);
-                    if (reportId) {
-                      nav(
-                        `/lesson-report/${item?.lesson?.id}?courseInstanceId=${item.course_instance_id}&editReportId=${reportId}`,
-                        {
-                          state: { selectedDate: selectedDate?.toISOString() },
-                        }
-                      );
-                    }
-                  }}
-                  className="bg-orange-500 text-white px-3 py-2 rounded-lg font-bold text-sm transition-colors hover:bg-orange-600 shadow-md"
-                >
-                  ✏️ ערוך
-                </button>
-              )}
-            </div>
-          );
-        }
-
-        if (!isReported) {
-          const canReport = [
-            "instructor",
-            "admin",
-            "pedagogical_manager",
-          ].includes(user.user_metadata.role);
-          return canReport ? (
-            <button
-              onClick={() =>
+    return (
+      <div className="flex items-center gap-2">
+        <span
+          className="inline-flex items-center gap-2 text-base font-bold px-4 py-2 rounded-full text-white"
+          style={{ backgroundColor: "#FFA500" }}
+        >
+          ❌ לא התקיים
+        </span>
+        { (
+          <button
+            onClick={() => {
+              const reportId = getReportIdForLesson(item);
+              if (reportId) {
                 nav(
-                  `/lesson-report/${item?.lesson?.id}?courseInstanceId=${item.course_instance_id}&instructorId=${
-                    item.course_instances?.instructor?.id || item.instructor_id
-                  }`,
-                  { state: { selectedDate: selectedDate?.toISOString() } }
-                )
+                  `/lesson-report/${item?.lesson?.id}?courseInstanceId=${item.course_instance_id}&editReportId=${reportId}`,
+                  {
+                    state: { selectedDate: selectedDate?.toISOString() },
+                  }
+                );
               }
-              className="bg-blue-500 text-white px-4 py-3 rounded-full font-bold text-base transition-colors hover:bg-blue-600 shadow-md"
-            >
-              📋 דווח על השיעור
-            </button>
-          ) : (
-            <span className="inline-flex items-center gap-2 text-base font-bold text-gray-600 bg-gray-100 px-4 py-2 rounded-full">
-              📋 טרם דווח
-            </span>
-          );
-        }
+            }}
+            className="bg-orange-500 text-white px-3 py-2 rounded-lg font-bold text-sm transition-colors hover:bg-orange-600 shadow-md"
+          >
+            ✏️ ערוך
+          </button>
+        )}
+      </div>
+    );
+  }
 
-        return (
-          <span className="inline-flex items-center gap-2 text-base font-bold text-green-700 bg-green-100 px-4 py-2 rounded-full">
-            <Check className="w-5 h-5" /> דווח
-          </span>
-        );
-      };
+  if (lessonStatus?.isCompleted && lessonStatus?.isLessonOk === false) {
+    const canEdit = ["admin", "pedagogical_manager"].includes(
+      user.user_metadata.role
+    );
+
+    return (
+      <div className="flex items-center gap-2">
+        <span
+          className="inline-flex items-center gap-2 text-base font-bold px-4 py-2 rounded-full text-white"
+          style={{ backgroundColor: "#FF0000" }}
+        >
+          ⚠️ לא התנהל כשורה
+        </span>
+        { (
+          <button
+            onClick={() => {
+              const reportId = getReportIdForLesson(item);
+              if (reportId) {
+                nav(
+                  `/lesson-report/${item?.lesson?.id}?courseInstanceId=${item.course_instance_id}&editReportId=${reportId}`,
+                  {
+                    state: { selectedDate: selectedDate?.toISOString() },
+                  }
+                );
+              }
+            }}
+            className="bg-orange-500 text-white px-3 py-2 rounded-lg font-bold text-sm transition-colors hover:bg-orange-600 shadow-md"
+          >
+            ✏️ ערוך
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  if (lessonStatus?.isCompleted === true) {
+    const canEdit = ["admin", "pedagogical_manager"].includes(
+      user.user_metadata.role
+    );
+
+    return (
+      <div className="flex items-center gap-2">
+        <span className="inline-flex items-center gap-2 text-base font-bold text-green-700 bg-green-100 px-4 py-2 rounded-full">
+          <Check className="w-5 h-5" /> דווח
+        </span>
+        { (
+          <button
+            onClick={() => {
+              const reportId = getReportIdForLesson(item);
+              if (reportId) {
+                nav(
+                  `/lesson-report/${item?.lesson?.id}?courseInstanceId=${item.course_instance_id}&editReportId=${reportId}`,
+                  {
+                    state: { selectedDate: selectedDate?.toISOString() },
+                  }
+                );
+              }
+            }}
+            className="bg-orange-500 text-white px-3 py-2 rounded-lg font-bold text-sm transition-colors hover:bg-orange-600 shadow-md"
+          >
+            ✏️ ערוך
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  if (!isReported) {
+    const canReport = [
+      "instructor",
+      "admin",
+      "pedagogical_manager",
+    ].includes(user.user_metadata.role);
+
+    return canReport ? (
+      <button
+        onClick={() =>
+          nav(
+            `/lesson-report/${item?.lesson?.id}?courseInstanceId=${item.course_instance_id}&instructorId=${
+              item.course_instances?.instructor?.id || item.instructor_id
+            }`,
+            { state: { selectedDate: selectedDate?.toISOString() } }
+          )
+        }
+        className="bg-blue-500 text-white px-4 py-3 rounded-full font-bold text-base transition-colors hover:bg-blue-600 shadow-md"
+      >
+        📋 דווח על השיעור
+      </button>
+    ) : (
+      <span className="inline-flex items-center gap-2 text-base font-bold text-gray-600 bg-gray-100 px-4 py-2 rounded-full">
+        📋 טרם דווח
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-2 text-base font-bold text-green-700 bg-green-100 px-4 py-2 rounded-full">
+      <Check className="w-5 h-5" /> דווח
+    </span>
+  );
+};
 
       // ✅ שים לב – זה התנאי הנכון להצגת כל כרטיס
       if (instructorName === null) return null;

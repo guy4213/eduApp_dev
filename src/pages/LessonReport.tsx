@@ -1957,6 +1957,96 @@ const handleSubmit = async () => {
       console.log("Reported lesson instance record created");
     }
 
+    // **דחיית תזמון אוטומטית אם השיעור לא התקיים**
+    if (!isCompleted) {
+      console.log('[LessonReport] Lesson did not take place (is_completed=false)');
+      console.log('[LessonReport] lessonScheduleId:', lessonScheduleId);
+      console.log('[LessonReport] courseInstanceIdForReport:', courseInstanceIdForReport);
+      console.log('[LessonReport] lesson id:', id);
+
+      // צריך למצוא את ה-schedule ID
+      let scheduleIdToPostpone = lessonScheduleId;
+
+      // אם אין scheduleId ישיר, צריך למצוא אותו מה-DB (new architecture)
+      if (!scheduleIdToPostpone && courseInstanceIdForReport && id) {
+        console.log('[LessonReport] No direct scheduleId, searching in DB...');
+        try {
+          const { data: schedules, error: scheduleError } = await supabase
+            .from('lesson_schedules')
+            .select('id, scheduled_start')
+            .eq('course_instance_id', courseInstanceIdForReport)
+            .eq('lesson_id', id)
+            .order('scheduled_start', { ascending: true })
+            .limit(1);
+
+          if (!scheduleError && schedules && schedules.length > 0) {
+            scheduleIdToPostpone = schedules[0].id;
+            console.log('[LessonReport] Found schedule ID from DB:', scheduleIdToPostpone);
+          } else {
+            console.error('[LessonReport] Could not find schedule in DB:', scheduleError);
+          }
+        } catch (findError) {
+          console.error('[LessonReport] Error finding schedule:', findError);
+        }
+      }
+
+      if (scheduleIdToPostpone) {
+        console.log('[LessonReport] Postponing schedule:', scheduleIdToPostpone);
+        try {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !session?.access_token) {
+        throw new Error('לא ניתן לקבל token למשתמש');
+      }
+
+          console.log("Supabase URL:", import.meta.env.VITE_SUPABASE_URL);
+          console.log("Service role key:", import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY);
+          // Call Edge Function instead of direct DB operations
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/postpone-schedule`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`            },
+            body: JSON.stringify({
+              scheduleId: scheduleIdToPostpone,
+              reportId: reportData.id
+            })
+          });
+
+          const postponeResult = await response.json();
+
+          if (postponeResult.success) {
+            console.log('[LessonReport] Schedule postponed successfully:', postponeResult.message);
+            toast({
+              title: "תזמון נדחה",
+              description: postponeResult.message,
+              variant: "default"
+            });
+          } else {
+            console.error('[LessonReport] Failed to postpone schedule:', postponeResult.message);
+            toast({
+              title: "אזהרה",
+              description: `הדיווח נשמר, אך דחיית התזמון נכשלה: ${postponeResult.message}`,
+              variant: "destructive"
+            });
+          }
+        } catch (postponeError) {
+          console.error('[LessonReport] Error postponing schedule:', postponeError);
+          toast({
+            title: "אזהרה",
+            description: "הדיווח נשמר, אך הייתה שגיאה בדחיית התזמון",
+            variant: "destructive"
+          });
+        }
+      } else {
+        console.warn('[LessonReport] No schedule ID found to postpone');
+        toast({
+          title: "אזהרה",
+          description: "הדיווח נשמר, אך לא נמצא תזמון לדחייה",
+          variant: "destructive"
+        });
+      }
+    }
+
     // שמירת נתוני נוכחות
    try {
   // העבר את isEditMode כפרמטר שלישי כדי שהפונקציה תדע אם זה עדכון

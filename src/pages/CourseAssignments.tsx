@@ -169,7 +169,7 @@ const CourseAssignments = () => {
               return <Badge className="bg-orange-500 text-white border-orange-600 whitespace-nowrap">❌ לא התקיים</Badge>;
           }
           if (reportStatus.isCompleted && reportStatus.isLessonOk === false) {
-              return <Badge className="bg-red-500 text-white border-red-600 whitespace-nowrap">⚠️ תקלה</Badge>;
+              return <Badge className="bg-red-500 text-white border-red-600 whitespace-nowrap">לא התנהל כשורה⚠️</Badge>;
           }
           if (reportStatus.isCompleted && reportStatus.isLessonOk !== false) {
               return <Badge className="bg-green-500 text-white border-green-600 whitespace-nowrap">✅ דווח תקין</Badge>;

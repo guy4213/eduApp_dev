@@ -1773,11 +1773,23 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { 
-  getSystemDefaults, 
-  getDisabledDatesForCalendar, 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  getSystemDefaults,
+  getDisabledDatesForCalendar,
   isDateBlocked,
-  clearSystemCache 
+  clearSystemCache,
+  generatePhysicalSchedulesFromPattern,
+  updatePhysicalSchedules
 } from "@/utils/scheduleUtils"; // עדכן את הנתיב לפי המיקום הנכון
 import { Switch } from "@radix-ui/react-switch";
 import { useAuth } from "./auth/AuthProvider";
@@ -1897,13 +1909,13 @@ const [systemDefaults, setSystemDefaults] = useState<any>(null);
 const [scheduleWarnings, setScheduleWarnings] = useState<string[]>([]);
 const [draggedLessonIndex, setDraggedLessonIndex] = useState<number | null>(null);
 const [lessonSource, setLessonSource] = useState<'none' | 'template' | 'scratch'>('none');
-const [lessonMode, setLessonMode] = useState<'template' | 'custom_only' | 'combined'|'none'>('combined');
-const [isCombinedMode, setIsCombinedMode] = useState(true);
+const [lessonMode, setLessonMode] = useState<'template' | 'custom_only' | 'combined'|'none'>('template');
+const [isCombinedMode, setIsCombinedMode] = useState(false);
+const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
 
 console.log(" instance id from dialog assign ",instanceId)
   const isMounted = useRef(false);
-  const isLoadingEditData = useRef(false);
-
+  
   const dayNames = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 
   // --- useEffects for Data Loading and State Reset ---
@@ -1950,14 +1962,13 @@ console.log(" instance id from dialog assign ",instanceId)
     return;
   }
 
-  // Reset to initial state
   const initialState = getInitialState();
   setFormData(initialState.formData);
   setCourseSchedule(initialState.courseSchedule);
   setInstanceLessons(initialState.instanceLessons);
   setHasCustomLessons(initialState.hasCustomLessons);
   setStep(1);
-  setScheduleWarnings([]);
+  setScheduleWarnings([]); // הוסף את זה
 
   // טעינת הגדרות מערכת וקבצים חסומים
   loadSystemConfiguration();
@@ -1973,38 +1984,9 @@ console.log(" instance id from dialog assign ",instanceId)
       }
     });
   } else if (mode === 'edit' && editData) {
-    // In edit mode, load existing data which will override initial state
-    console.log('[useEffect] Loading edit data for instance:', editData.instance_id);
-    isLoadingEditData.current = true;
-
-    // First, populate formData with editData
-    setFormData({
-      institution_id: "", // Will be filled from schedule
-      instructor_id: "", // Will be filled from schedule
-      grade_level: editData.grade_level,
-      price_for_customer: editData.price_for_customer.toString(),
-      price_for_instructor: editData.price_for_instructor.toString(),
-      max_participants: editData.max_participants.toString(),
-      start_date: editData.start_date,
-      end_date: editData.approx_end_date || "",
-    });
-
-    // Load schedule first, then lessons
-    fetchExistingSchedule().then(() => {
-      console.log('[useEffect] Schedule loaded, loading lessons...');
-      return loadInstanceLessons();
-    }).then(() => {
-      console.log('[useEffect] Instance lessons loaded');
-      if(courseId) {
-        return fetchTemplateLessons();
-      }
-    }).then(() => {
-      console.log('[useEffect] All edit data loaded successfully');
-      isLoadingEditData.current = false;
-    }).catch(error => {
-      console.error('[useEffect] Error loading edit data:', error);
-      isLoadingEditData.current = false;
-    });
+    fetchExistingSchedule();
+    loadInstanceLessons();
+    if(courseId) fetchTemplateLessons();
   }
 
   isMounted.current = true;
@@ -2012,25 +1994,12 @@ console.log(" instance id from dialog assign ",instanceId)
 
 
 useEffect(() => {
-  // Don't update during initial edit data loading to prevent race conditions
-  if (isLoadingEditData.current) {
-    console.log('[useEffect-lessons] Skipping update - still loading edit data');
-    return;
-  }
-
   if (templateLessons.length > 0 || instanceLessons.length > 0) {
     const totalLessons = templateLessons.length + instanceLessons.length;
-    console.log('[useEffect-lessons] Updating total_lessons to:', totalLessons);
-    console.log('[useEffect-lessons] Current courseSchedule.days_of_week:', courseSchedule.days_of_week);
-    setCourseSchedule(prev => {
-      console.log('[useEffect-lessons] prev.days_of_week before update:', prev.days_of_week);
-      const updated = {
-        ...prev,
-        total_lessons: totalLessons || prev.total_lessons || 1
-      };
-      console.log('[useEffect-lessons] Updated schedule (should preserve days_of_week):', updated);
-      return updated;
-    });
+    setCourseSchedule(prev => ({
+      ...prev,
+      total_lessons: totalLessons || prev.total_lessons || 1
+    }));
   }
 }, [templateLessons, instanceLessons]); // רק כשהרשימות משתנות, לא כשהערך משתנה
 
@@ -2206,18 +2175,37 @@ const fetchTemplateLessons = async (idToFetch?: string) => {
     const actualInstanceId = instanceId || editData?.instance_id;
     if (!actualInstanceId) return;
     try {
-      const { data, error } = await supabase.from('lessons').select('id, title, description, order_index, lesson_tasks(*)').eq('course_instance_id', actualInstanceId).order('order_index');
+      console.log('[loadInstanceLessons] Loading lessons for instance:', actualInstanceId);
+
+      const { data, error } = await supabase
+        .from('lessons')
+        .select('id, title, description, order_index, course_instance_id, lesson_tasks(*)')
+        .eq('course_instance_id', actualInstanceId)
+        .order('order_index');
+
       if (error) throw error;
+
+      console.log('[loadInstanceLessons] Found lessons in DB:', data?.length || 0);
       if (data && data.length > 0) {
-        const formattedLessons = data.map(l => ({...l, description: l.description || '', tasks: (l.lesson_tasks as any[]) || []}));
+        console.log('[loadInstanceLessons] Lesson details:', data.map(l => ({ id: l.id, title: l.title, order_index: l.order_index })));
+      }
+
+      if (data && data.length > 0) {
+        const formattedLessons = data.map(l => ({
+          ...l,
+          description: l.description || '',
+          tasks: (l.lesson_tasks as any[]) || []
+        }));
         setInstanceLessons(formattedLessons);
         setHasCustomLessons(true);
+        console.log('[loadInstanceLessons] Set hasCustomLessons = true');
       } else {
         setInstanceLessons([]);
         setHasCustomLessons(false);
+        console.log('[loadInstanceLessons] No custom lessons found, set hasCustomLessons = false');
       }
     } catch (error) {
-      console.error('Error loading instance lessons:', error);
+      console.error('[loadInstanceLessons] Error loading instance lessons:', error);
     }
   };
   
@@ -2293,26 +2281,20 @@ const fetchExistingSchedule = async () => {
       const durMinutes = (scheduleData as any).lesson_duration_minutes;
       const taskDurMinutes = (scheduleData as any).task_duration_minutes;
 
-      console.log('[fetchExistingSchedule] Raw schedule data from DB:', {
-        days_of_week: scheduleData.days_of_week,
-        days_of_week_type: typeof scheduleData.days_of_week,
-        days_of_week_isArray: Array.isArray(scheduleData.days_of_week),
-        time_slots: scheduleData.time_slots,
-        total_lessons: scheduleData.total_lessons
-      });
+      // Normalize days_of_week to numbers (might come from DB as strings)
+      const normalizedDays = (scheduleData.days_of_week || []).map((day: any) =>
+        typeof day === 'string' ? parseInt(day, 10) : day
+      );
 
-      // Ensure days_of_week is an array of numbers
-      let daysOfWeek = scheduleData.days_of_week || [];
-      if (Array.isArray(daysOfWeek)) {
-        // Convert to numbers if they're strings
-        daysOfWeek = daysOfWeek.map(day => typeof day === 'string' ? parseInt(day) : day);
-      }
+      // Normalize time_slots days to numbers
+      const normalizedTimeSlots = ((scheduleData.time_slots as any[]) || []).map((ts: any) => ({
+        ...ts,
+        day: typeof ts.day === 'string' ? parseInt(ts.day, 10) : ts.day
+      }));
 
-      console.log('[fetchExistingSchedule] Normalized days_of_week:', daysOfWeek);
-
-      const newSchedule = {
-        days_of_week: daysOfWeek,
-        time_slots: (scheduleData.time_slots as TimeSlot[]) || [],
+      setCourseSchedule({
+        days_of_week: normalizedDays,
+        time_slots: normalizedTimeSlots as TimeSlot[],
         total_lessons: scheduleData.total_lessons || 1,
         lesson_duration_minutes:
           durMinutes ||
@@ -2322,10 +2304,7 @@ const fetchExistingSchedule = async () => {
           taskDurMinutes ||
           systemDefaults?.default_task_duration ||
           25,
-      };
-
-      console.log('[fetchExistingSchedule] Setting courseSchedule to:', newSchedule);
-      setCourseSchedule(newSchedule);
+      });
     }
   } catch (error) {
     console.error("Error fetching existing schedule:", error);
@@ -2475,11 +2454,11 @@ const copyTemplateLessonsToInstance = () => {
       toast({ title: "הודעה", description: "אין שיעורי תבנית להעתקה", variant: "default" });
       return;
     }
-    
-    if (lessonMode === 'combined') {
-      toast({ title: "מוד משולב", description: "במוד זה, שיעורי תבנית מוצגים כפי שהם, ללא העתקה. הוסף ייחודיים.", variant: "default" });
-      return;
-    }
+    setIsCombinedMode(false)
+    // if (lessonMode === 'combined') {
+    //   toast({ title: "מוד משולב", description: "במוד זה, שיעורי תבנית מוצגים כפי שהם, ללא העתקה. הוסף ייחודיים.", variant: "default" });
+    //   return;
+    // }
     
     // העתקה רק ל-'custom_only'
     const copiedLessons = templateLessons.map((lesson, index) => ({
@@ -2532,30 +2511,131 @@ const startCombinedMode = () => {
   // };
 const resetInstanceLessons = async () => {
   const actualInstanceId = instanceId || editData?.instance_id;
-  
+
   if (mode === 'edit' && actualInstanceId) {
-    // **במצב עריכה - מחק מה-DB**
+    // **במצב עריכה - מחק מה-DB וצור מחדש**
     try {
-      const { error } = await supabase
+      console.log('[resetInstanceLessons] Starting reset for instance:', actualInstanceId);
+
+      // Step 1: Delete ALL schedules for this course instance
+      const { error: schedulesError } = await supabase
+        .from('lesson_schedules')
+        .delete()
+        .eq('course_instance_id', actualInstanceId);
+
+      if (schedulesError) {
+        console.error('[resetInstanceLessons] Error deleting schedules:', schedulesError);
+        throw schedulesError;
+      }
+
+      console.log('[resetInstanceLessons] All schedules deleted');
+
+      // Step 2: Delete the custom lessons
+      const { error: lessonsError } = await supabase
         .from('lessons')
         .delete()
         .eq('course_instance_id', actualInstanceId);
 
-      if (error) throw error;
+      if (lessonsError) throw lessonsError;
 
+      console.log('[resetInstanceLessons] Custom lessons deleted');
+
+      // Step 3: Update lesson_mode to template
+      const { error: updateError } = await supabase
+        .from('course_instances')
+        .update({ lesson_mode: 'template' })
+        .eq('id', actualInstanceId);
+
+      if (updateError) {
+        console.error('[resetInstanceLessons] Error updating lesson_mode:', updateError);
+        throw updateError;
+      }
+
+      console.log('[resetInstanceLessons] Updated lesson_mode to template');
+
+      // Step 4: Regenerate physical schedules with template lessons
+      try {
+        // Fetch the schedule pattern
+        const { data: schedulePattern, error: scheduleError } = await supabase
+          .from('course_instance_schedules')
+          .select(`
+            *,
+            course_instances:course_instance_id (
+              course_id,
+              start_date,
+              end_date
+            )
+          `)
+          .eq('course_instance_id', actualInstanceId)
+          .single();
+
+        if (scheduleError) throw scheduleError;
+
+        if (schedulePattern && schedulePattern.course_instances) {
+          // Fetch template lessons
+          const { data: templateLessons } = await supabase
+            .from('lessons')
+            .select('id, title, course_id, order_index, course_instance_id')
+            .eq('course_id', schedulePattern.course_instances.course_id)
+            .is('course_instance_id', null)
+            .order('order_index');
+
+          console.log('[resetInstanceLessons] Template lessons found:', templateLessons?.length || 0);
+
+          if (templateLessons && templateLessons.length > 0) {
+            // Generate new physical schedules with template lessons
+            const physicalSchedules = await generatePhysicalSchedulesFromPattern(
+              {
+                id: schedulePattern.id,
+                course_instance_id: actualInstanceId,
+                days_of_week: schedulePattern.days_of_week,
+                time_slots: schedulePattern.time_slots,
+                total_lessons: schedulePattern.total_lessons,
+                lesson_duration_minutes: schedulePattern.lesson_duration_minutes,
+              },
+              templateLessons,
+              schedulePattern.course_instances.start_date,
+              schedulePattern.course_instances.end_date
+            );
+
+            console.log('[resetInstanceLessons] Regenerated physical schedules:', physicalSchedules.length);
+          }
+        }
+      } catch (regenerateError) {
+        console.error('[resetInstanceLessons] Error regenerating schedules:', regenerateError);
+        // Don't fail the whole operation
+      }
+
+      // Update UI state
+      console.log('[resetInstanceLessons] BEFORE state update - hasCustomLessons:', hasCustomLessons, 'instanceLessons.length:', instanceLessons.length);
       setInstanceLessons([]);
       setHasCustomLessons(false);
       setLessonSource('none');
-      toast({ title: "נמחק", description: "כל השיעורים הייחודיים נמחקו מההקצאה" });
+      setLessonMode('template');
+      setIsCombinedMode(false);
+      console.log('[resetInstanceLessons] AFTER state update - State should now be: hasCustomLessons=false, instanceLessons=[], lessonMode=template');
+
+      toast({
+        title: "חזרה לברירת מחדל",
+        description: "השיעורים והתזמונים חזרו לברירת המחדל של הקורס",
+        variant: "default"
+      });
+
     } catch (error) {
-      console.error('Error resetting lessons:', error);
-      toast({ title: "שגיאה", description: "שגיאה במחיקת שיעורים", variant: "destructive" });
+      console.error('[resetInstanceLessons] Error resetting lessons:', error);
+      toast({
+        title: "שגיאה",
+        description: "שגיאה בחזרה לברירת מחדל: " + (error?.message || ''),
+        variant: "destructive"
+      });
     }
   } else {
     // **במצב יצירה - רק ניקוי state**
     setInstanceLessons([]);
     setHasCustomLessons(false);
     setLessonSource('none');
+    setLessonMode('template');
+    setIsCombinedMode(false);
     toast({ title: "נוקה", description: "השיעורים הייחודיים הוסרו (לא נשמר עדיין)" });
   }
 };
@@ -3416,7 +3496,8 @@ const saveCourseInstanceSchedule = async (instanceId: string) => {
   // =================================================================
   const saveInstanceLessons = async (assignmentInstanceId: string) => {
     try {
-      console.log(`Syncing unique lessons for instance ${assignmentInstanceId} with mode: ${lessonMode}`);
+      console.log(`[saveInstanceLessons] START - Syncing unique lessons for instance ${assignmentInstanceId} with mode: ${lessonMode}`);
+      console.log(`[saveInstanceLessons] Current instanceLessons:`, instanceLessons.map(l => ({ id: l.id, title: l.title })));
 
       // This function ONLY manages the UNIQUE lessons ('instanceLessons').
       // The 'combined' view is a display-time concern handled by the assignments page.
@@ -3424,55 +3505,138 @@ const saveCourseInstanceSchedule = async (instanceId: string) => {
       // 1. Get all lesson IDs currently in the DB for this instance
       const { data: dbLessons, error: fetchError } = await supabase
         .from('lessons')
-        .select('id')
+        .select('id, title')
         .eq('course_instance_id', assignmentInstanceId);
       if (fetchError) throw fetchError;
-      const dbLessonIds = new Set(dbLessons.map(l => l.id));
+      const dbLessonIds = new Set(dbLessons?.map(l => l.id) || []);
+      console.log(`[saveInstanceLessons] Lessons in DB:`, dbLessons?.length || 0, dbLessons?.map(l => ({ id: l.id, title: l.title })));
 
       // 2. Get all lesson IDs currently in the UI state (excluding new temporary ones)
       const uiLessonIds = new Set(instanceLessons.map(l => l.id).filter(id => id && !id.toString().startsWith('temp-')));
+      console.log(`[saveInstanceLessons] Lessons in UI (non-temp IDs):`, uiLessonIds.size, Array.from(uiLessonIds));
 
       // 3. Find lessons to DELETE (in DB but not in UI)
       const lessonIdsToDelete = [...dbLessonIds].filter(id => !uiLessonIds.has(id));
+      console.log(`[saveInstanceLessons] Lessons to DELETE:`, lessonIdsToDelete.length, lessonIdsToDelete);
+
       if (lessonIdsToDelete.length > 0) {
-        console.log(`Deleting ${lessonIdsToDelete.length} lessons...`);
+        console.log(`[saveInstanceLessons] Deleting ${lessonIdsToDelete.length} lessons...`);
+
+        // *** Step 1: Delete ALL schedules linked to these lessons ***
+        const { error: deleteSchedulesError } = await supabase
+          .from('lesson_schedules')
+          .delete()
+          .in('lesson_id', lessonIdsToDelete);
+
+        if (deleteSchedulesError) {
+          console.error('[saveInstanceLessons] Error deleting schedules for lessons:', deleteSchedulesError);
+          throw deleteSchedulesError;
+        }
+
+        console.log('[saveInstanceLessons] Schedules deleted for lessons');
+
+        // *** Step 2: Delete ALL tasks linked to these lessons ***
+        const { error: deleteTasksError } = await supabase
+          .from('lesson_tasks')
+          .delete()
+          .in('lesson_id', lessonIdsToDelete);
+
+        if (deleteTasksError) {
+          console.error('[saveInstanceLessons] Error deleting tasks for lessons:', deleteTasksError);
+          throw deleteTasksError;
+        }
+
+        console.log('[saveInstanceLessons] Tasks deleted for lessons');
+
+        // *** Step 3: Now we can safely delete the lessons ***
         const { error: deleteError } = await supabase
           .from('lessons')
           .delete()
           .in('id', lessonIdsToDelete);
-        if (deleteError) throw deleteError;
+
+        if (deleteError) {
+          console.error('[saveInstanceLessons] Error deleting lessons:', deleteError);
+          throw deleteError;
+        }
+
+        console.log('[saveInstanceLessons] Lessons deleted successfully');
       }
 
-      // 4. Prepare lessons to be UPSERTED (new or updated)
+      // 4. Separate lessons into UPDATE (existing UUIDs) and INSERT (new temp IDs)
       if (instanceLessons.length > 0) {
-        const lessonsToUpsert = instanceLessons.map((lesson, index) => {
-            const { tasks, lesson_tasks, ...rest } = lesson;
-            
-            // If the ID is temporary or invalid, it will be handled by upsert correctly
-            // by treating it as an insert. We only keep valid UUIDs.
-            if (rest.id && !rest.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-                delete rest.id;
-            }
+        console.log('[saveInstanceLessons] Processing', instanceLessons.length, 'lessons');
 
-            return {
-                ...rest,
+        const lessonsToUpdate: any[] = [];
+        const lessonsToInsert: any[] = [];
+
+        instanceLessons.forEach((lesson, index) => {
+            const { tasks, lesson_tasks, ...rest } = lesson;
+
+            const lessonData: any = {
                 course_id: courseId || editData?.course_id,
                 course_instance_id: assignmentInstanceId,
-                // In combined mode, unique lessons are appended after template lessons
+                title: rest.title,
+                description: rest.description,
                 order_index: (lessonMode === 'combined' ? templateLessons.length : 0) + index,
-                // Ensure non-nullable fields have a value
                 scheduled_start: lesson.scheduled_start || new Date().toISOString(),
                 scheduled_end: lesson.scheduled_end || new Date().toISOString(),
             };
+
+            // Check if this is an existing lesson (valid UUID) or new lesson (temp ID)
+            const isUUID = rest.id && typeof rest.id === 'string' && rest.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+
+            if (isUUID) {
+                // Existing lesson - UPDATE
+                lessonData.id = rest.id;
+                lessonsToUpdate.push(lessonData);
+                console.log(`[saveInstanceLessons] ✅ Lesson ${index} will be UPDATED (UUID: ${rest.id})`);
+            } else {
+                // New lesson - INSERT (no id field, let DB generate UUID)
+                lessonsToInsert.push(lessonData);
+                console.log(`[saveInstanceLessons] ✅ Lesson ${index} will be INSERTED (temp id: ${rest.id})`);
+            }
         });
 
-        // 5. Upsert the lessons. This will INSERT new ones and UPDATE existing ones based on primary key.
-        const { data: savedLessons, error: upsertError } = await supabase
+        console.log('[saveInstanceLessons] Will UPDATE:', lessonsToUpdate.length, 'lessons');
+        console.log('[saveInstanceLessons] Will INSERT:', lessonsToInsert.length, 'lessons');
+
+        let savedLessons: any[] = [];
+
+        // 5a. UPDATE existing lessons
+        if (lessonsToUpdate.length > 0) {
+          console.log('[saveInstanceLessons] Updating existing lessons...');
+          const { data: updatedLessons, error: updateError } = await supabase
             .from('lessons')
-            .upsert(lessonsToUpsert, { onConflict: 'id' })
+            .upsert(lessonsToUpdate, { onConflict: 'id' })
             .select('id, title');
-            
-        if (upsertError) throw upsertError;
+
+          if (updateError) {
+            console.error('[saveInstanceLessons] ❌ UPDATE ERROR:', updateError);
+            throw updateError;
+          }
+
+          savedLessons.push(...(updatedLessons || []));
+          console.log('[saveInstanceLessons] ✅ Updated', updatedLessons?.length, 'lessons');
+        }
+
+        // 5b. INSERT new lessons
+        if (lessonsToInsert.length > 0) {
+          console.log('[saveInstanceLessons] Inserting new lessons...');
+          const { data: insertedLessons, error: insertError } = await supabase
+            .from('lessons')
+            .insert(lessonsToInsert)
+            .select('id, title');
+
+          if (insertError) {
+            console.error('[saveInstanceLessons] ❌ INSERT ERROR:', insertError);
+            throw insertError;
+          }
+
+          savedLessons.push(...(insertedLessons || []));
+          console.log('[saveInstanceLessons] ✅ Inserted', insertedLessons?.length, 'lessons');
+        }
+
+        console.log('[saveInstanceLessons] ✅ Total saved lessons:', savedLessons.length);
 
         // 6. Sync tasks for the saved lessons
         if (savedLessons && savedLessons.length > 0) {
@@ -3565,37 +3729,173 @@ const saveCourseInstanceSchedule = async (instanceId: string) => {
 const handleFinalSave = async () => {
   setLoading(true);
   try {
+    console.log('[handleFinalSave] START - lessonMode:', lessonMode, 'hasCustomLessons:', hasCustomLessons, 'instanceLessons.length:', instanceLessons.length);
+
     // שלב 1: שמור/עדכן את ההקצאה
     const newInstanceId = await handleCourseAssignment();
     if (!newInstanceId) throw new Error("Failed to create or update course instance.");
-    console.log("handlesave lesson_mode as: ", lessonMode);  
+    console.log("[handleFinalSave] Course instance saved with ID:", newInstanceId, "lesson_mode:", lessonMode);
+
     // שלב 2: שמור את לוח הזמנים
     await saveCourseInstanceSchedule(newInstanceId);
-    
-    // שלב 3: שמור שיעורים ייחודיים (אם קיימים)
-    if (hasCustomLessons && instanceLessons.length > 0) {
+
+    // *** שלב 2.5: טיפול בשיעורים ייחודיים ***
+    console.log('[handleFinalSave] Checking lesson mode - lessonMode:', lessonMode, 'hasCustomLessons:', hasCustomLessons, 'instanceLessons.length:', instanceLessons.length);
+
+    if (lessonMode === 'template') {
+      // אם המצב הוא 'template', מחק את כל השיעורים הייחודיים (אם קיימים)
+      console.log('[handleFinalSave] Mode is TEMPLATE - ensuring no custom lessons exist in DB');
+      try {
+        // First check if there are any custom lessons in DB
+        const { data: existingLessons } = await supabase
+          .from('lessons')
+          .select('id')
+          .eq('course_instance_id', newInstanceId);
+
+        if (existingLessons && existingLessons.length > 0) {
+          console.log('[handleFinalSave] Found', existingLessons.length, 'custom lessons to delete for template mode');
+          const lessonIds = existingLessons.map(l => l.id);
+
+          // Delete schedules
+          await supabase.from('lesson_schedules').delete().in('lesson_id', lessonIds);
+          // Delete tasks
+          await supabase.from('lesson_tasks').delete().in('lesson_id', lessonIds);
+          // Delete lessons
+          await supabase.from('lessons').delete().eq('course_instance_id', newInstanceId);
+
+          console.log('[handleFinalSave] ✅ Deleted all custom lessons for template mode');
+        } else {
+          console.log('[handleFinalSave] ✅ No custom lessons to delete (already clean)');
+        }
+      } catch (error) {
+        console.error('[handleFinalSave] Error cleaning custom lessons for template mode:', error);
+      }
+    } else if (hasCustomLessons && instanceLessons.length > 0) {
+      // אם יש שיעורים ייחודיים, שמור אותם
+      console.log('[handleFinalSave] ✅ WILL SAVE instance lessons. Lessons:', instanceLessons.map(l => ({ id: l.id, title: l.title })));
       await saveInstanceLessons(newInstanceId);
-      toast({ 
-        title: "הצלחה", 
+      console.log('[handleFinalSave] Instance lessons saved successfully');
+    } else {
+      console.log('[handleFinalSave] ❌ No instance lessons to save');
+    }
+
+    // שלב 3: Generate/Update physical schedules (אחרי שהשיעורים נשמרו!)
+    try {
+      // Fetch the saved schedule pattern
+      const { data: schedulePattern, error: scheduleError } = await supabase
+        .from('course_instance_schedules')
+        .select(`
+          *,
+          course_instances:course_instance_id (
+            course_id,
+            start_date,
+            end_date,
+            lesson_mode
+          )
+        `)
+        .eq('course_instance_id', newInstanceId)
+        .single();
+
+      if (scheduleError) throw scheduleError;
+
+      if (schedulePattern) {
+        const currentLessonMode = schedulePattern.course_instances.lesson_mode || lessonMode;
+
+        // Fetch lessons based on lesson_mode (עכשיו הם כבר ב-DB!)
+        const { data: instLessons } = await supabase
+          .from('lessons')
+          .select('id, title, course_id, order_index, course_instance_id')
+          .eq('course_instance_id', newInstanceId)
+          .order('order_index');
+
+        const { data: templLessons } = await supabase
+          .from('lessons')
+          .select('id, title, course_id, order_index, course_instance_id')
+          .eq('course_id', schedulePattern.course_instances.course_id)
+          .is('course_instance_id', null)
+          .order('order_index');
+
+        console.log('[CourseAssignDialog] Fetched lessons - instLessons:', instLessons?.length || 0, 'templLessons:', templLessons?.length || 0);
+
+        let lessonsForScheduling: any[] = [];
+        switch (currentLessonMode) {
+          case 'custom_only':
+            lessonsForScheduling = instLessons || [];
+            console.log('[CourseAssignDialog] Using custom_only lessons:', lessonsForScheduling.length);
+            break;
+          case 'combined':
+            lessonsForScheduling = [...(templLessons || []), ...(instLessons || [])]
+              .sort((a, b) => a.order_index - b.order_index);
+            console.log('[CourseAssignDialog] Using combined lessons:', lessonsForScheduling.length);
+            break;
+          case 'template':
+          default:
+            lessonsForScheduling = templLessons || [];
+            console.log('[CourseAssignDialog] Using template lessons:', lessonsForScheduling.length);
+            break;
+        }
+
+        if (lessonsForScheduling.length > 0) {
+          if (mode === 'edit') {
+            // Update existing physical schedules
+            console.log('[CourseAssignDialog] Updating physical schedules...');
+            const result = await updatePhysicalSchedules(schedulePattern.id, newInstanceId);
+            console.log('[CourseAssignDialog] Update result:', result.message);
+          } else {
+            // Generate new physical schedules
+            console.log('[CourseAssignDialog] Generating physical schedules...');
+            const physicalSchedules = await generatePhysicalSchedulesFromPattern(
+              {
+                id: schedulePattern.id,
+                course_instance_id: newInstanceId,
+                days_of_week: schedulePattern.days_of_week,
+                time_slots: schedulePattern.time_slots,
+                total_lessons: schedulePattern.total_lessons,
+                lesson_duration_minutes: schedulePattern.lesson_duration_minutes,
+              },
+              lessonsForScheduling,
+              schedulePattern.course_instances.start_date,
+              schedulePattern.course_instances.end_date
+            );
+            console.log('[CourseAssignDialog] Generated physical schedules:', physicalSchedules.length);
+          }
+        } else {
+          console.warn('[CourseAssignDialog] No lessons found for scheduling! lessonMode:', currentLessonMode);
+        }
+      }
+    } catch (physicalScheduleError) {
+      console.error('[CourseAssignDialog] Error with physical schedules:', physicalScheduleError);
+      // Don't fail the whole operation if physical schedules fail
+      toast({
+        title: "אזהרה",
+        description: "לוח הזמנים נשמר אך היה שגיאה ביצירת לוחות הזמנים הפיזיים",
+        variant: "destructive"
+      });
+    }
+
+    // שלב 4: הודעת הצלחה
+    if (hasCustomLessons && instanceLessons.length > 0) {
+      toast({
+        title: "הצלחה",
         description: `ההקצאה נשמרה עם ${instanceLessons.length} שיעורים ייחודיים!`,
         variant: "default"
       });
     } else {
-      toast({ 
-        title: "הצלחה", 
+      toast({
+        title: "הצלחה",
         description: mode === 'edit' ? "התוכנית עודכנה בהצלחה!" : "התוכנית נוצרה בהצלחה!",
         variant: "default"
       });
     }
-    
+
     onAssignmentComplete();
     onOpenChange(false);
   } catch (error) {
     console.error("Error saving:", error);
-    toast({ 
-      title: "שגיאה", 
-      description: "אירעה שגיאה בשמירה", 
-      variant: "destructive" 
+    toast({
+      title: "שגיאה",
+      description: "אירעה שגיאה בשמירה",
+      variant: "destructive"
     });
   } finally {
     setLoading(false);
@@ -4075,23 +4375,13 @@ const renderSchedulingStep = () => {
 
           <div className="space-y-2">
             <Label>ימים בשבוע</Label>
-            {/* Debug: Show current state */}
-            {console.log('[Render] courseSchedule.days_of_week:', courseSchedule.days_of_week)}
             <div className="flex flex-wrap gap-2">
-              {dayNames.map((day, index) => {
-                const isChecked = courseSchedule.days_of_week.includes(index);
-                console.log(`[Render] Day ${index} (${day}): checked=${isChecked}`);
-                return (
-                  <div key={index} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`day-${index}`}
-                      checked={isChecked}
-                      onCheckedChange={() => toggleDayOfWeek(index)}
-                    />
-                    <Label htmlFor={`day-${index}`} className="text-sm">{day}</Label>
-                  </div>
-                );
-              })}
+              {dayNames.map((day, index) => (
+                <div key={index} className="flex items-center space-x-2">
+                  <Checkbox id={`day-${index}`} checked={courseSchedule.days_of_week.includes(index)} onCheckedChange={() => toggleDayOfWeek(index)} />
+                  <Label htmlFor={`day-${index}`} className="text-sm">{day}</Label>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -4141,7 +4431,7 @@ const renderSchedulingStep = () => {
 
         <DialogFooter className="flex justify-between">
           <Button type="button" variant="outline" onClick={() => setStep(1)}>חזור</Button>
-          <Button type="button" onClick={handleFinalSave} disabled={loading}>{loading ? "שומר..." : "סיים ושמור"}</Button>
+          <Button onClick={handleFinalSave} disabled={loading}>{loading ? "יוצר..." : "צור הקצאה "}</Button>
         </DialogFooter>
       </div>
     );
@@ -4176,10 +4466,14 @@ const renderCustomLessonsDialog = () => (
           <div className="flex gap-2">
             {hasCustomLessons && (
               <>
-                <Button type="button" variant="destructive" onClick={resetInstanceLessons}>
+                   <Button type="button"  onClick={() => { setLessonMode("template");
+                    setHasCustomLessons(false); setStep(2); setShowCustomLessonsDialog(false); console.log("lessonMode",lessonMode);}}>
+            חזרה לברירת מחדל    
+            </Button>
+                <Button type="button" variant="destructive" onClick={() =>  {setShowDeleteConfirmation(true) }}>
                   מחק הכל
                 </Button>
-                
+            
                 {/* כפתור למצב משולב */}
                 <Button 
                   type="button" 
@@ -4276,7 +4570,7 @@ const renderCustomLessonsDialog = () => (
                   <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
                     <BookOpen className="h-6 w-6 text-green-600" />
                   </div>
-                  <h4 className="font-semibold text-gray-900">העתק מתבנית (5 שיעורים)</h4>
+                  <h4 className="font-semibold text-gray-900">העתק מתבנית </h4>
                   <p className="text-sm text-gray-600 text-center">
                     העתק את כל שיעורי התבנית כנקודת התחלה לעריכה
                   </p>
@@ -4342,7 +4636,7 @@ const renderCustomLessonsDialog = () => (
           variant="outline"
           onClick={() => setShowCustomLessonsDialog(false)}
         >
-          סגור
+          שמור שינויים
         </Button>
       </DialogFooter>
     </DialogContent>
