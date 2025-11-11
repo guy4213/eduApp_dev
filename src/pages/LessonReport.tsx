@@ -1993,13 +1993,19 @@ const handleSubmit = async () => {
       if (scheduleIdToPostpone) {
         console.log('[LessonReport] Postponing schedule:', scheduleIdToPostpone);
         try {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !session?.access_token) {
+        throw new Error('לא ניתן לקבל token למשתמש');
+      }
+
+          console.log("Supabase URL:", import.meta.env.VITE_SUPABASE_URL);
+          console.log("Service role key:", import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY);
           // Call Edge Function instead of direct DB operations
           const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/postpone-schedule`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-            },
+              'Authorization': `Bearer ${session.access_token}`            },
             body: JSON.stringify({
               scheduleId: scheduleIdToPostpone,
               reportId: reportData.id
