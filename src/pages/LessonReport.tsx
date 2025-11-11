@@ -46,6 +46,7 @@ import { he } from "date-fns/locale";
 import { useMemo } from "react";
 import { Upload, FileSpreadsheet } from "lucide-react";
 import * as XLSX from 'xlsx';
+import { postponeScheduleToNextDay } from "@/utils/scheduleUtils";
 
 
 const LessonReport = () => {
@@ -1955,6 +1956,36 @@ const handleSubmit = async () => {
       );
     } else {
       console.log("Reported lesson instance record created");
+    }
+
+    // **דחיית תזמון אוטומטית אם השיעור לא התקיים**
+    if (!isCompleted && lessonScheduleId) {
+      console.log('[LessonReport] Lesson did not take place (is_completed=false), postponing schedule...');
+      try {
+        const postponeResult = await postponeScheduleToNextDay(lessonScheduleId, reportData.id);
+        if (postponeResult.success) {
+          console.log('[LessonReport] Schedule postponed successfully:', postponeResult.message);
+          toast({
+            title: "תזמון נדחה",
+            description: postponeResult.message,
+            variant: "default"
+          });
+        } else {
+          console.error('[LessonReport] Failed to postpone schedule:', postponeResult.message);
+          toast({
+            title: "אזהרה",
+            description: `הדיווח נשמר, אך דחיית התזמון נכשלה: ${postponeResult.message}`,
+            variant: "destructive"
+          });
+        }
+      } catch (postponeError) {
+        console.error('[LessonReport] Error postponing schedule:', postponeError);
+        toast({
+          title: "אזהרה",
+          description: "הדיווח נשמר, אך הייתה שגיאה בדחיית התזמון",
+          variant: "destructive"
+        });
+      }
     }
 
     // שמירת נתוני נוכחות

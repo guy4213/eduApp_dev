@@ -2915,3 +2915,232 @@ export const updatePhysicalSchedules = async (
     return { success: false, message: `Error: ${error}` };
   }
 };
+
+/**
+ * Postpones a lesson schedule to the next available day based on the course pattern
+ * and chains all subsequent schedules forward by one occurrence.
+ *
+ * @param scheduleId - The ID of the schedule to postpone
+ * @param reportId - The ID of the report marking it as "not held"
+ * @returns Promise with success status and message
+ */
+export const postponeScheduleToNextDay = async (
+  scheduleId: string,
+  reportId: string
+): Promise<{ success: boolean; message: string; newScheduleId?: string }> => {
+  try {
+    console.log(`[postponeSchedule] Postponing schedule ${scheduleId} with report ${reportId}`);
+
+    // 1. Fetch the original schedule with all related data
+    const { data: originalSchedule, error: fetchError } = await supabase
+      .from('lesson_schedules')
+      .select(`
+        *,
+        course_instances:course_instance_id (
+          id,
+          start_date,
+          end_date,
+          course_instance_schedules (
+            id,
+            days_of_week,
+            time_slots,
+            total_lessons,
+            lesson_duration_minutes
+          )
+        ),
+        lessons:lesson_id (
+          id,
+          title,
+          order_index
+        )
+      `)
+      .eq('id', scheduleId)
+      .single();
+
+    if (fetchError || !originalSchedule) {
+      console.error('[postponeSchedule] Error fetching schedule:', fetchError);
+      return { success: false, message: 'לא נמצא תזמון' };
+    }
+
+    console.log('[postponeSchedule] Original schedule:', originalSchedule);
+
+    const courseInstance = originalSchedule.course_instances;
+    const pattern = courseInstance?.course_instance_schedules?.[0];
+
+    if (!pattern || !pattern.days_of_week || !pattern.time_slots) {
+      return { success: false, message: 'לא נמצא תבנית תזמון' };
+    }
+
+    // Normalize days
+    const normalizedDays = (pattern.days_of_week || []).map((day: any) =>
+      typeof day === 'string' ? parseInt(day, 10) : day
+    ).sort();
+
+    const normalizedTimeSlots = (pattern.time_slots || []).map((ts: any) => ({
+      ...ts,
+      day: typeof ts.day === 'string' ? parseInt(ts.day, 10) : ts.day
+    }));
+
+    console.log('[postponeSchedule] Pattern days:', normalizedDays);
+    console.log('[postponeSchedule] Time slots:', normalizedTimeSlots);
+
+    // 2. Calculate next available date
+    const originalDate = new Date(originalSchedule.scheduled_start);
+    const originalDay = originalDate.getDay();
+
+    let nextDate = new Date(originalDate);
+    nextDate.setDate(nextDate.getDate() + 1); // Start from next day
+
+    // Find next day that matches the pattern
+    let attempts = 0;
+    while (!normalizedDays.includes(nextDate.getDay()) && attempts < 14) {
+      nextDate.setDate(nextDate.getDate() + 1);
+      attempts++;
+    }
+
+    if (attempts >= 14) {
+      return { success: false, message: 'לא נמצא יום זמין בשבועיים הקרובים' };
+    }
+
+    // Check blocked dates
+    const blockedDates = await getBlockedDates(true);
+    const blockedDateSet = new Set<string>();
+    blockedDates.forEach(blockedDate => {
+      if (blockedDate.date) {
+        blockedDateSet.add(blockedDate.date);
+      } else if (blockedDate.start_date && blockedDate.end_date) {
+        const start = new Date(blockedDate.start_date);
+        const end = new Date(blockedDate.end_date);
+        const current = new Date(start);
+        while (current <= end) {
+          blockedDateSet.add(current.toISOString().split('T')[0]);
+          current.setDate(current.getDate() + 1);
+        }
+      }
+    });
+
+    // Skip blocked dates
+    attempts = 0;
+    while (blockedDateSet.has(nextDate.toISOString().split('T')[0]) && attempts < 30) {
+      nextDate.setDate(nextDate.getDate() + 1);
+      // Make sure it still matches pattern
+      while (!normalizedDays.includes(nextDate.getDay()) && attempts < 30) {
+        nextDate.setDate(nextDate.getDate() + 1);
+        attempts++;
+      }
+      attempts++;
+    }
+
+    // 3. Find the time slot for the new day
+    const nextDayOfWeek = nextDate.getDay();
+    const timeSlot = normalizedTimeSlots.find(ts => ts.day === nextDayOfWeek);
+
+    if (!timeSlot || !timeSlot.start_time || !timeSlot.end_time) {
+      return { success: false, message: 'לא נמצא slot זמן עבור היום הבא' };
+    }
+
+    // 4. Calculate new start and end times
+    const [startHour, startMinute] = timeSlot.start_time.split(':').map(Number);
+    const [endHour, endMinute] = timeSlot.end_time.split(':').map(Number);
+
+    const newStart = new Date(nextDate);
+    newStart.setHours(startHour, startMinute, 0, 0);
+
+    const newEnd = new Date(nextDate);
+    newEnd.setHours(endHour, endMinute, 0, 0);
+
+    console.log('[postponeSchedule] New schedule date:', newStart.toISOString());
+
+    // 5. Create new schedule (duplicate)
+    const { data: newSchedule, error: insertError } = await supabase
+      .from('lesson_schedules')
+      .insert({
+        course_instance_id: originalSchedule.course_instance_id,
+        lesson_id: originalSchedule.lesson_id,
+        lesson_number: originalSchedule.lesson_number,
+        scheduled_start: newStart.toISOString(),
+        scheduled_end: newEnd.toISOString(),
+        is_generated: false
+      })
+      .select()
+      .single();
+
+    if (insertError || !newSchedule) {
+      console.error('[postponeSchedule] Error creating new schedule:', insertError);
+      return { success: false, message: 'שגיאה ביצירת תזמון חדש' };
+    }
+
+    console.log('[postponeSchedule] Created new schedule:', newSchedule.id);
+
+    // 6. Chain all subsequent schedules (shift them forward by one day of pattern)
+    const { data: subsequentSchedules, error: fetchSubError } = await supabase
+      .from('lesson_schedules')
+      .select('*')
+      .eq('course_instance_id', originalSchedule.course_instance_id)
+      .gt('scheduled_start', originalSchedule.scheduled_start)
+      .order('scheduled_start', { ascending: true });
+
+    if (!fetchSubError && subsequentSchedules && subsequentSchedules.length > 0) {
+      console.log(`[postponeSchedule] Chaining ${subsequentSchedules.length} subsequent schedules`);
+
+      for (const schedule of subsequentSchedules) {
+        const scheduleDate = new Date(schedule.scheduled_start);
+        const scheduleDayOfWeek = scheduleDate.getDay();
+
+        // Find next pattern day
+        let shiftedDate = new Date(scheduleDate);
+        shiftedDate.setDate(shiftedDate.getDate() + 1);
+
+        attempts = 0;
+        while (!normalizedDays.includes(shiftedDate.getDay()) && attempts < 14) {
+          shiftedDate.setDate(shiftedDate.getDate() + 1);
+          attempts++;
+        }
+
+        // Skip blocked dates
+        attempts = 0;
+        while (blockedDateSet.has(shiftedDate.toISOString().split('T')[0]) && attempts < 30) {
+          shiftedDate.setDate(shiftedDate.getDate() + 1);
+          while (!normalizedDays.includes(shiftedDate.getDay()) && attempts < 30) {
+            shiftedDate.setDate(shiftedDate.getDate() + 1);
+            attempts++;
+          }
+          attempts++;
+        }
+
+        // Find time slot for shifted day
+        const shiftedDayOfWeek = shiftedDate.getDay();
+        const shiftedTimeSlot = normalizedTimeSlots.find(ts => ts.day === shiftedDayOfWeek);
+
+        if (shiftedTimeSlot && shiftedTimeSlot.start_time && shiftedTimeSlot.end_time) {
+          const [shiftStartHour, shiftStartMinute] = shiftedTimeSlot.start_time.split(':').map(Number);
+          const [shiftEndHour, shiftEndMinute] = shiftedTimeSlot.end_time.split(':').map(Number);
+
+          const shiftedStart = new Date(shiftedDate);
+          shiftedStart.setHours(shiftStartHour, shiftStartMinute, 0, 0);
+
+          const shiftedEnd = new Date(shiftedDate);
+          shiftedEnd.setHours(shiftEndHour, shiftEndMinute, 0, 0);
+
+          // Update the schedule
+          await supabase
+            .from('lesson_schedules')
+            .update({
+              scheduled_start: shiftedStart.toISOString(),
+              scheduled_end: shiftedEnd.toISOString()
+            })
+            .eq('id', schedule.id);
+
+          console.log(`[postponeSchedule] Shifted schedule ${schedule.id} to ${shiftedStart.toISOString()}`);
+        }
+      }
+    }
+
+    const message = `התזמון נדחה ליום ${nextDate.toLocaleDateString('he-IL')} ו-${subsequentSchedules?.length || 0} תזמונים נשרשרו קדימה`;
+    return { success: true, message, newScheduleId: newSchedule.id };
+
+  } catch (error) {
+    console.error('[postponeSchedule] Error:', error);
+    return { success: false, message: `שגיאה: ${error}` };
+  }
+};

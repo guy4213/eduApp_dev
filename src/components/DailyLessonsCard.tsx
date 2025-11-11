@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calendar, Check, Plus } from "lucide-react";
+import { Calendar, Check, Plus, FastForward } from "lucide-react";
 import { useAuth } from "./auth/AuthProvider";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { postponeScheduleToNextDay } from "@/utils/scheduleUtils";
+import { useToast } from "@/hooks/use-toast";
 
 interface LessonCardProps {
   id: string;
@@ -66,12 +68,15 @@ export const DailyLessonsCard: React.FC<any> = ({
   lessons,
   onAddLesson,
 }) => {
+  const { toast } = useToast();
+  const [postponingScheduleId, setPostponingScheduleId] = useState<string | null>(null);
 
   const [reportedScheduleIds, setReportedScheduleIds] = useState<Set<string>>(new Set());
 const [reportStatusMap, setReportStatusMap] = useState<Map<string, {
-  isCompleted: boolean, 
+  isCompleted: boolean,
   isLessonOk: boolean,
   reportId?: string  // ⬅️ הוסף את זה!
+  scheduleId?: string  // ⬅️ נוסיף גם את schedule ID
 }>>(new Map());
 
 // useEffect(() => {
@@ -175,11 +180,12 @@ useEffect(() => {
 
     const reportedIds = new Set<string>();
     const statusMap = new Map<string, {
-      isCompleted: boolean, 
-      isLessonOk: boolean, 
-      reportId: string  // ⬅️ הוסף את זה!
+      isCompleted: boolean,
+      isLessonOk: boolean,
+      reportId: string,
+      scheduleId?: string
     }>();
-    
+
     lessonReports?.forEach((report: any) => {
       report.reported_lesson_instances?.forEach((instance: any) => {
         let key = '';
@@ -195,7 +201,8 @@ useEffect(() => {
           statusMap.set(key, {
             isCompleted: report.is_completed !== false,
             isLessonOk: report.is_lesson_ok || false,
-            reportId: report.id  // ⬅️ שמור את report ID
+            reportId: report.id,
+            scheduleId: instance.lesson_schedule_id  // ⬅️ שמור גם את schedule ID
           });
         }
       });
@@ -222,6 +229,47 @@ useEffect(() => {
     supabase.removeChannel(channel);
   };
 }, []);
+
+  const handlePostponeSchedule = async (scheduleId: string, reportId: string) => {
+    if (!scheduleId || !reportId) {
+      toast({
+        title: "שגיאה",
+        description: "חסר מידע לדחיית התזמון",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setPostponingScheduleId(scheduleId);
+    try {
+      const result = await postponeScheduleToNextDay(scheduleId, reportId);
+      if (result.success) {
+        toast({
+          title: "הצלחה!",
+          description: result.message,
+          variant: "default"
+        });
+        // Refresh the page to show updated schedules
+        window.location.reload();
+      } else {
+        toast({
+          title: "שגיאה",
+          description: result.message,
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Error postponing schedule:', error);
+      toast({
+        title: "שגיאה",
+        description: "אירעה שגיאה בדחיית התזמון",
+        variant: "destructive"
+      });
+    } finally {
+      setPostponingScheduleId(null);
+    }
+  };
+
   const filteredClasses = (lessons??[]).filter((c) => {
   console.log("DATE", c.scheduled_start);
   if (!c.scheduled_start) return true;
