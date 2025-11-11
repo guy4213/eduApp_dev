@@ -281,7 +281,7 @@ function getLessonKey(lesson: any) {
   if (!c.scheduled_start) return true;
 
   const classDate = new Date(c.scheduled_start);
-  const selected = new Date(Date.now()+15*24 * 60 * 60 * 1000 );
+  const selected = new Date(Date.now());
 // -*24 * 60 * 60 * 1000
   // Normalize both dates to YYYY-MM-DD strings
   const classDateStr = classDate.toISOString().split("T")[0];
