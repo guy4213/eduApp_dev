@@ -3564,8 +3564,25 @@ const saveCourseInstanceSchedule = async (instanceId: string) => {
 
       // 4. Prepare lessons to be UPSERTED (new or updated)
       if (instanceLessons.length > 0) {
+        console.log('[saveInstanceLessons] Preparing to upsert', instanceLessons.length, 'lessons');
+        console.log('[saveInstanceLessons] Raw instanceLessons:', instanceLessons.map(l => ({
+          id: l.id,
+          title: l.title,
+          hasId: !!l.id,
+          idType: typeof l.id,
+          isUUID: l.id ? l.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) : false
+        })));
+
         const lessonsToUpsert = instanceLessons.map((lesson, index) => {
             const { tasks, lesson_tasks, ...rest } = lesson;
+
+            console.log(`[saveInstanceLessons] Processing lesson ${index}:`, {
+              originalId: lesson.id,
+              restId: rest.id,
+              hasRestId: !!rest.id,
+              restIdType: typeof rest.id,
+              restKeys: Object.keys(rest)
+            });
 
             // Build the lesson object without id first
             const lessonData: any = {
@@ -3579,23 +3596,34 @@ const saveCourseInstanceSchedule = async (instanceId: string) => {
             };
 
             // Only include id if it's a valid UUID (for updates)
-            if (rest.id && rest.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+            if (rest.id && typeof rest.id === 'string' && rest.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
                 lessonData.id = rest.id;
+                console.log(`[saveInstanceLessons] ✅ Including UUID id for lesson ${index}:`, rest.id);
+            } else {
+                console.log(`[saveInstanceLessons] ⚠️ Skipping id for lesson ${index} (will be auto-generated). rest.id:`, rest.id);
             }
-            // Otherwise, let Supabase generate a new UUID (for inserts)
 
+            console.log(`[saveInstanceLessons] Final lessonData for lesson ${index}:`, lessonData);
             return lessonData;
         });
 
         console.log('[saveInstanceLessons] Upserting lessons:', lessonsToUpsert.length);
+        console.log('[saveInstanceLessons] Full lessonsToUpsert array:', JSON.stringify(lessonsToUpsert, null, 2));
 
         // 5. Upsert the lessons. This will INSERT new ones and UPDATE existing ones based on primary key.
+        console.log('[saveInstanceLessons] About to execute upsert with data:', lessonsToUpsert);
         const { data: savedLessons, error: upsertError } = await supabase
             .from('lessons')
             .upsert(lessonsToUpsert, { onConflict: 'id' })
             .select('id, title');
-            
-        if (upsertError) throw upsertError;
+
+        if (upsertError) {
+          console.error('[saveInstanceLessons] ❌ UPSERT ERROR:', upsertError);
+          console.error('[saveInstanceLessons] Failed data that was sent:', JSON.stringify(lessonsToUpsert, null, 2));
+          throw upsertError;
+        }
+
+        console.log('[saveInstanceLessons] ✅ Upsert successful, saved lessons:', savedLessons);
 
         // 6. Sync tasks for the saved lessons
         if (savedLessons && savedLessons.length > 0) {
