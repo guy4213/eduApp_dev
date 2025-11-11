@@ -2963,13 +2963,43 @@ export const postponeScheduleToNextDay = async (
     }
 
     console.log('[postponeSchedule] Original schedule:', originalSchedule);
+    console.log('[postponeSchedule] course_instances data:', originalSchedule.course_instances);
 
     const courseInstance = originalSchedule.course_instances;
-    const pattern = courseInstance?.course_instance_schedules?.[0];
+    console.log('[postponeSchedule] courseInstance:', courseInstance);
+    console.log('[postponeSchedule] course_instance_schedules array:', courseInstance?.course_instance_schedules);
 
+    let pattern = courseInstance?.course_instance_schedules?.[0];
+    console.log('[postponeSchedule] pattern from join:', pattern);
+
+    // If pattern not found via join, try direct query
     if (!pattern || !pattern.days_of_week || !pattern.time_slots) {
-      return { success: false, message: 'לא נמצא תבנית תזמון' };
+      console.error('[postponeSchedule] Pattern validation failed:', {
+        hasPattern: !!pattern,
+        hasDaysOfWeek: !!pattern?.days_of_week,
+        hasTimeSlots: !!pattern?.time_slots,
+        pattern: pattern
+      });
+
+      // Try to fetch the pattern directly
+      console.log('[postponeSchedule] Trying to fetch pattern directly from DB...');
+      const { data: directPattern, error: directError } = await supabase
+        .from('course_instance_schedules')
+        .select('*')
+        .eq('course_instance_id', originalSchedule.course_instance_id)
+        .single();
+
+      console.log('[postponeSchedule] Direct pattern query result:', directPattern, 'error:', directError);
+
+      if (directPattern && directPattern.days_of_week && directPattern.time_slots) {
+        console.log('[postponeSchedule] ✅ Using direct pattern instead');
+        pattern = directPattern; // Use the direct pattern
+      } else {
+        return { success: false, message: 'לא נמצא תבנית תזמון' };
+      }
     }
+
+    console.log('[postponeSchedule] Final pattern to use:', pattern);
 
     // Normalize days
     const normalizedDays = (pattern.days_of_week || []).map((day: any) =>
