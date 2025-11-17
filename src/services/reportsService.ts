@@ -1,4 +1,8 @@
-import { supabase } from "@/integrations/supabase/client";
+/**
+ * Reports Service
+ * Handles lesson reports with date filtering
+ */
+import { fetchLessonReportsByDateRange } from "./apiService";
 
 export interface LessonReport {
   id: string;
@@ -7,18 +11,7 @@ export interface LessonReport {
 }
 
 export async function getLessonReportsByDateRange(start: Date, end: Date): Promise<LessonReport[]> {
-  const startIso = start.toISOString();
-  const endIso = end.toISOString();
-  const { data, error } = await supabase
-    .from("lesson_reports")
-    .select("*")
-    .gte("created_at", startIso)
-    .lt("created_at", endIso);
-  if (error) {
-    console.error("getLessonReportsByDateRange error:", error.message);
-    return [];
-  }
-  return data || [];
+  return fetchLessonReportsByDateRange(start, end);
 }
 
 export async function getMonthlyLessonReports(year: number, monthZeroBased: number): Promise<LessonReport[]> {

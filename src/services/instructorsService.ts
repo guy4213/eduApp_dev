@@ -1,13 +1,10 @@
-import { supabase } from "@/integrations/supabase/client";
+/**
+ * Instructors Service
+ * Re-exports from centralized apiService for backward compatibility
+ * @deprecated Consider importing directly from apiService instead
+ */
+import { fetchInstructors } from "./apiService";
 
 export async function listInstructorsBasic() {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id, full_name')
-    .eq('role', 'instructor');
-  if (error) {
-    console.error('listInstructorsBasic error:', error.message);
-    return [];
-  }
-  return data || [];
+  return fetchInstructors();
 }
