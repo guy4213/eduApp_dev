@@ -42,6 +42,16 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { format } from 'date-fns';
 import { he } from 'date-fns/locale';
 import MobileNavigation from "@/components/layout/MobileNavigation";
+// Import service functions
+import { formatDateHebrew } from "@/services/formattersService";
+import {
+  calculateMonthlySummary,
+  getStatusIcon as getStatusIconHelper,
+  getStatusLabel,
+  getStatusColor,
+  getProgressFromStatus
+} from "@/services/salesLeadsHelpers";
+import { extractCityFromAddress } from "@/services/addressService";
 
 interface SalesLead {
   id: string;
@@ -111,104 +121,25 @@ const [priceValues, setPriceValues] = useState<{ [key: string]: number }>({});
   const [institutions, setInstitutions] = useState<{name: string, city: string}[]>([]);
   const [cities, setCities] = useState<string[]>([]);
 
+  // Helper function to render icon components with styling
   const getStatusIcon = (status: string | null) => {
-    if (!status) return <AlertCircle className="h-5 w-5 text-gray-600" />;
-    
-    switch (status) {
-      case 'new':
-        return <Plus className="h-5 w-5 text-blue-600" />;
-      case 'contacted':
-        return <Phone className="h-5 w-5 text-yellow-600" />;
-      case 'meeting_scheduled':
-        return <Calendar className="h-5 w-5 text-blue-600" />;
-      case 'proposal_sent':
-        return <CheckCircle className="h-5 w-5 text-green-600" />;
-      case 'negotiation':
-        return <TrendingUp className="h-5 w-5 text-orange-600" />;
-      case 'follow_up':
-        return <Clock className="h-5 w-5 text-orange-600" />;
-      case 'closed_won':
-        return <Trophy className="h-5 w-5 text-purple-600" />;
-      case 'closed_lost':
-        return <AlertCircle className="h-5 w-5 text-red-600" />;
-      default:
-        return <AlertCircle className="h-5 w-5 text-gray-600" />;
-    }
-  };
+    const IconComponent = getStatusIconHelper(status);
 
-  const getStatusLabel = (status: string | null) => {
-    if (!status) return 'ללא סטטוס';
-    
-    switch (status) {
-      case 'new':
-        return 'חדש';
-      case 'contacted':
-        return 'נוצר קשר';
-      case 'meeting_scheduled':
-        return 'נקבעה פגישה';
-      case 'proposal_sent':
-        return 'נשלחה הצעה';
-      case 'negotiation':
-        return 'במשא ומתן';
-      case 'follow_up':
-        return 'מעקב';
-      case 'closed_won':
-        return 'נסגר - זכייה';
-      case 'closed_lost':
-        return 'נסגר - הפסד';
-      default:
-        return status;
-    }
-  };
+    if (!status) return <IconComponent className="h-5 w-5 text-gray-600" />;
 
-  const getStatusColor = (status: string | null) => {
-    if (!status) return 'bg-gray-100 text-gray-800 border-gray-200';
-    
-    switch (status) {
-      case 'new':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'contacted':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'meeting_scheduled':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'proposal_sent':
-        return 'bg-green-100 text-green-800 border-green-200';
-      case 'negotiation':
-        return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'follow_up':
-        return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'closed_won':
-        return 'bg-purple-100 text-purple-800 border-purple-200';
-      case 'closed_lost':
-        return 'bg-red-100 text-red-800 border-red-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
+    const colorMap: Record<string, string> = {
+      'new': 'text-blue-600',
+      'contacted': 'text-yellow-600',
+      'meeting_scheduled': 'text-blue-600',
+      'proposal_sent': 'text-green-600',
+      'negotiation': 'text-orange-600',
+      'follow_up': 'text-orange-600',
+      'closed_won': 'text-purple-600',
+      'closed_lost': 'text-red-600'
+    };
 
-  const getProgressFromStatus = (status: string | null) => {
-    if (!status) return 0;
-    
-    switch (status) {
-      case 'new':
-        return 10;
-      case 'contacted':
-        return 25;
-      case 'meeting_scheduled':
-        return 50;
-      case 'proposal_sent':
-        return 75;
-      case 'negotiation':
-        return 85;
-      case 'follow_up':
-        return 60;
-      case 'closed_won':
-        return 100;
-      case 'closed_lost':
-        return 0;
-      default:
-        return 0;
-    }
+    const colorClass = colorMap[status] || 'text-gray-600';
+    return <IconComponent className={`h-5 w-5 ${colorClass}`} />;
   };
 
   useEffect(() => {
@@ -280,26 +211,6 @@ const [priceValues, setPriceValues] = useState<{ [key: string]: number }>({});
     setSelectedStatus("all");
     setSelectedInstitution("all");
     setSelectedCity("all");
-  };
-
-  const calculateMonthlySummary = (leads: SalesLead[]) => {
-    const totalPotentialValue = leads.reduce((sum, lead) => {
-      return sum + (lead.potential_value || 0);
-    }, 0);
-
-    // Calculate different reward types based on potential values
-    // You can adjust these percentages as needed
-    const teaching_incentives = Math.floor(totalPotentialValue * 0.4); // 40% for teaching incentives
-    const closing_bonuses = Math.floor(totalPotentialValue * 0.3); // 30% for closing bonuses  
-    const team_rewards = Math.floor(totalPotentialValue * 0.1); // 10% for team rewards
-    const total = totalPotentialValue;
-
-    return {
-      teaching_incentives,
-      closing_bonuses,
-      team_rewards,
-      total
-    };
   };
 
   const fetchSalesLeads = useCallback(async () => {
@@ -382,29 +293,6 @@ const [priceValues, setPriceValues] = useState<{ [key: string]: number }>({});
     } catch (error) {
       console.error('Error fetching filter data:', error);
     }
-  };
-
-  const extractCityFromAddress = (address: string): string => {
-    if (!address) return 'לא צוין';
-    
-    // Split by comma and take the last part (usually the city)
-    const parts = address.split(',').map(part => part.trim());
-    if (parts.length > 1) {
-      return parts[parts.length - 1];
-    }
-    
-    // If no comma, try to extract city from common patterns
-    const words = address.split(' ').map(word => word.trim());
-    if (words.length > 2) {
-      return words[words.length - 1];
-    }
-    
-    return 'לא צוין';
-  };
-
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return '';
-    return new Date(dateString).toLocaleDateString('he-IL');
   };
 
   const updateLeadValue = async (leadId: string, newValue: number) => {
@@ -826,13 +714,13 @@ const pendingClosures = filteredSalesLeads.filter(
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <p className="text-sm font-medium text-gray-700 mb-1">תאריך יצירה:</p>
-              <p className="text-sm text-gray-600">{formatDate(lead.created_at)}</p>
+              <p className="text-sm text-gray-600">{formatDateHebrew(lead.created_at)}</p>
             </div>
 
             {lead.closed_at && (
               <div>
                 <p className="text-sm font-medium text-gray-700 mb-1">תאריך סגירה:</p>
-                <p className="text-sm text-gray-600">{formatDate(lead.closed_at)}</p>
+                <p className="text-sm text-gray-600">{formatDateHebrew(lead.closed_at)}</p>
               </div>
             )}
           </div>

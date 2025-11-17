@@ -47,6 +47,9 @@ import MobileNavigation from "@/components/layout/MobileNavigation";
 import { Trash2 } from "lucide-react";
 import DeleteCourseDialog from "@/components/DeleteCourseDialog"; // Import the new dialog
 import { Pagination } from "@/components/ui/Pagination"; // Pagination component
+// Import service functions
+import { formatDate, formatDateTime } from "@/services/formattersService";
+import { groupTasksByLesson, formatCourseData } from "@/services/coursesHelpers";
 
 interface Task {
   id: string;
@@ -129,24 +132,6 @@ const Courses = () => {
       }
       return newSet;
     });
-  };
-  const groupTasksByLesson = (tasks: Task[]) => {
-    const grouped: Record<number, Task[]> = {};
-
-    // קיבוץ המשימות לפי מספר שיעור
-    for (const task of tasks) {
-      if (!grouped[task.lesson_number]) {
-        grouped[task.lesson_number] = [];
-      }
-      grouped[task.lesson_number].push(task);
-    }
-
-    // מיון המשימות בתוך כל שיעור לפי order_index
-    for (const lessonNumber in grouped) {
-      grouped[lessonNumber].sort((a, b) => a.order_index - b.order_index);
-    }
-
-    return grouped;
   };
 
   // Step 3: Add functions to handle deletion
@@ -283,85 +268,9 @@ const Courses = () => {
         console.error("Error fetching instructors:", instructorsError);
       }
 
-      // Helper function to format template course data
-      // בתוך פונקציית formatCourseData, החלף את החלק הזה:
-
-      const formatCourseData = (course: any) => {
-        // שלב 1: סינון ומיון השיעורים לפי order_index
-        const courseLessons = lessonsData
-          .filter((lesson) => lesson.course_id === course.id)
-          .sort((a, b) => {
-            // מיון לפי order_index, ואם הם שווים אז לפי id
-            if (a.order_index !== b.order_index) {
-              return a.order_index - b.order_index;
-            }
-            return a.id.localeCompare(b.id);
-          });
-
-        console.log(
-          `Lessons for course ${course.name}:`,
-          courseLessons.map((l) => ({
-            title: l.title,
-            order_index: l.order_index,
-            id: l.id,
-          }))
-        );
-
-        // שלב 2: יצירת מפה של lesson_id למספר השיעור הנכון
-        const lessonNumberMap = new Map();
-        courseLessons.forEach((lesson, index) => {
-          lessonNumberMap.set(lesson.id, index + 1);
-        });
-
-        // שלב 3: בניית רשימת המשימות עם המספור הנכון
-        const allCourseTasks = [];
-
-        courseLessons.forEach((lesson) => {
-          const lessonNumber = lessonNumberMap.get(lesson.id);
-          const lessonTasks = tasksData
-            .filter((task) => task.lesson_id === lesson.id)
-            .sort((a, b) => a.order_index - b.order_index) // מיון משימות לפי order_index
-            .map((task) => ({
-              ...task,
-              lesson_title: lesson.title,
-              lesson_number: lessonNumber,
-            }));
-
-          allCourseTasks.push(...lessonTasks);
-        });
-
-        return {
-          id: course.id,
-          instance_id: null,
-          name: course.name || "ללא שם קורס",
-          grade_level: "לא צוין",
-          max_participants: 0,
-          price_per_lesson: 0,
-          institution_name: "תבנית קורס",
-          instructor_name: "לא הוקצה",
-          lesson_count: courseLessons.length,
-          start_date: null,
-          approx_end_date: null,
-          is_assigned: false,
-          school_type: course.school_type,
-          presentation_link: course.presentation_link,
-          program_link: course.program_link,
-          tasks: allCourseTasks.map((task: any) => ({
-            id: task.id,
-            title: task.title,
-            description: task.description,
-            estimated_duration: task.estimated_duration,
-            is_mandatory: task.is_mandatory,
-            lesson_number: task.lesson_number,
-            lesson_title: task.lesson_title,
-            order_index: task.order_index,
-          })),
-        };
-      };
-
-      // Format template courses only
+      // Format template courses only using the service function
       const formattedTemplateCourses =
-        allCoursesData?.map(formatCourseData) || [];
+        allCoursesData?.map((course) => formatCourseData(course, lessonsData, tasksData)) || [];
 
       console.log("Template courses: ", formattedTemplateCourses);
       setCourses(formattedTemplateCourses);
@@ -433,25 +342,6 @@ const Courses = () => {
     if (!open) {
       setEditCourse(null);
     }
-  };
-
-  const formatDate = (isoDate: string) => {
-    const date = new Date(isoDate);
-    const day = date.getDate();
-    const month = date.getMonth() + 1; // months are zero-based
-    const year = date.getFullYear();
-    return `${day}.${month}.${year}`;
-  };
-
-  const formatDateTime = (isoDateTime: string) => {
-    if (!isoDateTime) return null;
-    const date = new Date(isoDateTime);
-    const day = date.getDate();
-    const month = date.getMonth() + 1;
-    const year = date.getFullYear();
-    const hours = date.getHours().toString().padStart(2, "0");
-    const minutes = date.getMinutes().toString().padStart(2, "0");
-    return `${day}.${month}.${year} ${hours}:${minutes}`;
   };
 
   if (loading) {
