@@ -263,12 +263,6 @@ const handleExcelUpload = async (event: React.ChangeEvent<HTMLInputElement>) => 
 
 
 
-
-
-
-
-
-
   async function getMaxParticipantsByScheduleId(scheduleId) {
     console.log("Getting max participants for schedule ID:", scheduleId);
 
