@@ -46,8 +46,11 @@ const Calendar = () => {
       endDate.setHours(23, 59, 59, 999);
 
       console.log(`[Calendar] Loading range: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`);
-
-      const combinedSchedules = await fetchSchedulesByDateRange(startDate, endDate);
+        let combinedSchedules
+        if ( user.user_metadata.role==='instructor' ){
+combinedSchedules=await fetchSchedulesByDateRange(startDate,endDate,undefined, user);
+    }
+      else{ combinedSchedules= await fetchSchedulesByDateRange(startDate, endDate);}
 
       console.log(`[Calendar] Loaded ${combinedSchedules.length} schedules`);
 
@@ -79,7 +82,7 @@ const Calendar = () => {
       setLoadingState('initial');
       fetchLessonsData(1); // Start with ±1 month for fast initial load
     }
-  }, [user, fetchLessonsData]);
+  }, []);
 
   // Auto-refresh calendar data every 2 minutes
   useEffect(() => {
@@ -91,7 +94,7 @@ const Calendar = () => {
     }, 2 * 60 * 1000);
 
     return () => clearInterval(interval);
-  }, [user, fetchLessonsData]);
+  }, []);
 
   // Listen for lesson report updates
   useEffect(() => {
@@ -114,7 +117,7 @@ const Calendar = () => {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('lessonReportUpdated', handleRefresh);
     };
-  }, [fetchLessonsData]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 p-0 sm:p-6 ">

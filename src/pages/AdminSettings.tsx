@@ -203,35 +203,7 @@ const [selectedSystemUser, setSelectedSystemUser] = useState<SystemUser | null>(
     }));
   };
   
-  // Function to save the updated profile
-//   const handleUpdateInstructor = async () => {
-//     if (!selectedInstructor) return;
-//         console.log("אובייקט הנשלח לעדכון ב-Supabase:", instructorForm);
 
-//     setLoading(true);
-//     try {
-//         const { error } = await supabase
-//             .from('profiles')
-//             .update({ ...instructorForm, updated_at: new Date().toISOString() })
-//             .eq('id', selectedInstructor.id);
-
-//         if (error) {
-//             throw error;
-//         }
-
-//         toast({ title: "✅ פרופיל המדריך עודכן בהצלחה" });
-//         setShowEditInstructorModal(false);
-//         fetchInstructors(); // Refresh the instructor list with new data
-//     } catch (error: any) {
-//         toast({
-//             title: "❌ שגיאה בעדכון הפרופיל",
-//             description: error.message,
-//             variant: "destructive",
-//         });
-//     } finally {
-//         setLoading(false);
-//     }
-//   };
 
 
 const handleUpdateInstructor = async () => {
@@ -402,47 +374,6 @@ const updateContact = (index: number, field: keyof Contact, value: string) => {
 };
 
 
-  // Save institution
-  // const saveInstitution = async () => {
-  //   if (!institutionForm.name || !institutionForm.city) {
-  //       toast({ title: "שדות חובה חסרים", description: "אנא מלא שם מוסד ועיר.", variant: "destructive" });
-  //       return;
-  //   }
-  //   setLoading(true);
-  //   try {
-  //     if (editingInstitution) {
-  //       // Update existing
-  //       const { error } = await supabase
-  //         .from('educational_institutions')
-  //         .update(institutionForm)
-  //         .eq('id', editingInstitution.id);
-        
-  //       if (!error) {
-  //         toast({ title: "✅ המוסד עודכן בהצלחה" });
-  //       }
-  //     } else {
-  //       // Create new
-  //       const { error } = await supabase
-  //         .from('educational_institutions')
-  //         .insert([institutionForm]);
-        
-  //       if (!error) {
-  //         toast({ title: "✅ המוסד נוסף בהצלחה" });
-  //       }
-  //     }
-      
-  //     fetchInstitutions();
-  //     closeInstitutionModal();
-  //   } catch (error) {
-  //     toast({
-  //       title: "❌ שגיאה בשמירת המוסד",
-  //       variant: "destructive"
-  //     });
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
-
   
 const saveInstitution = async () => {
   if (!institutionForm.name?.trim() || !institutionForm.city?.trim()) {
@@ -546,25 +477,7 @@ const saveInstitution = async () => {
     }
   };
 
-  // // Open institution modal
-  // const openInstitutionModal = (institution?: Institution) => {
-  //   if (institution) {
-  //     setEditingInstitution(institution);
-  //     setInstitutionForm(institution);
-  //   } else {
-  //     setEditingInstitution(null);
-  //     setInstitutionForm({
-  //       name: '',
-  //       city: '',
-  //       address: '',
-  //       contact_phone: '',
-  //       contact_person: '',
-  //       contact_email: '',
-  //       notes: ''
-  //     });
-  //   }
-  //   setShowInstitutionModal(true);
-  // };
+
 
 const openInstitutionModal = (institution?: Institution) => {
   if (institution) {
@@ -653,65 +566,7 @@ const closeInstitutionModal = () => {
     }
   };
 
-    // --- NEW SECURE DELETE INSTRUCTOR LOGIC ---
-    // const handleDeleteInstructor = async () => {
-    //     if (!selectedInstructor) return;
-    
-    //     setLoading(true);
-    //     try {
-    //         // Step 1: Notify admins if there are assignments (optional but good practice)
-    //         if (instructorAssignments.length > 0) {
-    //             const { error: notifyError } = await supabase.functions.invoke('notify-admins-on-delete', {
-    //                 body: {
-    //                     instructorName: selectedInstructor.full_name,
-    //                     assignments: instructorAssignments,
-    //                 },
-    //             });
-    //             if (notifyError) console.error("Failed to send notification email:", notifyError);
-    //         }
-    
-    //         // Step 2: Reassign or nullify assignments
-    //         if (reassignToInstructor) {
-    //             await supabase
-    //                 .from('course_instances')
-    //                 .update({ instructor_id: reassignToInstructor })
-    //                 .eq('instructor_id', selectedInstructor.id);
-    //         } else if (instructorAssignments.length > 0) {
-    //              await supabase
-    //                 .from('course_instances')
-    //                 .update({ instructor_id: null })
-    //                 .eq('instructor_id', selectedInstructor.id);
-    //         }
-    
-    //         // Step 3: Call the secure Supabase function to delete the user
-    //         const { error: deleteError } = await supabase.functions.invoke('delete-user', {
-    //             body: { user_id: selectedInstructor.id },
-    //         });
-    
-    //         if (deleteError) {
-    //             throw new Error(deleteError.message);
-    //         }
-    
-    //         toast({ title: "✅ המדריך הוסר בהצלחה מהמערכת" });
-    //         fetchInstructors(); // Refresh the list
-    //         // Close and reset modal state
-    //         setShowDeleteConfirm(false);
-    //         setSelectedInstructor(null);
-    //         setInstructorAssignments([]);
-    //         setReassignToInstructor('');
-    
-    //     } catch (error: any) {
-    //         toast({
-    //             title: "❌ שגיאה בהסרת המדריך",
-    //             description: error.message || "אירעה שגיאה לא צפויה.",
-    //             variant: "destructive"
-    //         });
-    //     } finally {
-    //         setLoading(false);
-    //     }
-    // };
-
-
+ 
     const handleDeleteInstructor = async () => {
     if (!selectedInstructor) {
         toast({ title: "שגיאה: לא נבחר מדריך למחיקה", variant: "destructive" });
@@ -766,29 +621,7 @@ const closeInstitutionModal = () => {
         setLoading(false);
     }
 };
-  // Fetch blocked dates
-// const fetchBlockedDates = async () => {
-//   console.log("Fetching blocked dates...");
-//   try {
-//     const { data, error } = await supabase
-//       .from('blocked_dates')
-//       .select('*')
-//       .order('created_at', { ascending: false }); // פשוט - סדר לפי תאריך יצירה
-    
-//     console.log("fetchBlockedDates response:", { data, error });
-    
-//     if (data) {
-//       console.log("Setting blocked dates:", data);
-//       setBlockedDates(data);
-//     }
-//     if (error) {
-//       console.error("fetchBlockedDates error:", error);
-//     }
-//   } catch (error) {
-//     console.error('Error fetching blocked dates:', error);
-//   }
-// };
- 
+
 const fetchBlockedDates = async () => {
   try {
     const { data, error } = await supabase
@@ -1088,37 +921,7 @@ const saveSystemUser = async () => {
     setLoading(false);
   }
 };
-// Delete system user
-// const handleDeleteSystemUser = async () => {
-//   if (!selectedSystemUser) return;
 
-//   setLoading(true);
-//   try {
-//     const { error } = await supabase.functions.invoke('delete-user', {
-//       body: {
-//         userId: selectedSystemUser.id,
-//         instructorName: selectedSystemUser.full_name,
-//         assignments: []
-//       },
-//     });
-
-//     if (error) throw new Error(`שגיאה: ${error.message}`);
-
-//     toast({ title: "✅ משתמש המערכת הוסר בהצלחה" });
-//     fetchSystemUsers();
-//     setShowDeleteSystemUserConfirm(false);
-//     setSelectedSystemUser(null);
-
-//   } catch (error: any) {
-//     toast({
-//       title: "❌ שגיאה בהסרת משתמש המערכת",
-//       description: error.message,
-//       variant: "destructive",
-//     });
-//   } finally {
-//     setLoading(false);
-//   }
-// };
 
 const handleDeleteSystemUser = async () => {
   if (!selectedSystemUser) return;
@@ -1284,21 +1087,7 @@ const getRoleBadge = (role: string) => {
                     <p className="text-xs text-gray-500">זמן ברירת מחדל למשימה</p>
                   </div>
                   
-                  {/* <div className="space-y-2">
-                    <Label htmlFor="break-duration">הפסקה בין שיעורים (דקות)</Label>
-                    <Input
-                      id="break-duration"
-                      type="number"
-                      min="0"
-                      max="30"
-                      value={defaults.default_break_duration}
-                      onChange={(e) => setDefaults({
-                        ...defaults,
-                        default_break_duration: parseInt(e.target.value) || 10
-                      })}
-                    />
-                    <p className="text-xs text-gray-500">זמן הפסקה בין שיעורים</p>
-                  </div> */}
+           
                 </div>
                 
                 <div className="flex justify-end">
@@ -1421,70 +1210,7 @@ const getRoleBadge = (role: string) => {
             </Card>
           </TabsContent>
 
-          {/* מדריכים */}
-          {/* <TabsContent value="instructors">
-            <Card>
-              <CardHeader>
-                <CardTitle>ניהול מדריכים</CardTitle>
-                <CardDescription>
-                  רשימת המדריכים במערכת - ניתן להסיר מדריכים בלבד (הוספת מדריכים מתבצעת בדף המשתמשים)
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-                  </div>
-                ) : instructors.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <Users className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                    <p>אין מדריכים במערכת</p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <Table className='rtl'>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="text-right">שם המדריך</TableHead>
-                          <TableHead className="text-right px-[5rem]">אימייל</TableHead>
-                          <TableHead className="text-right px-[2rem]">טלפון</TableHead>
-                          <TableHead className="text-right ">תאריך הצטרפות</TableHead>
-                          <TableHead className="text-center">פעולות</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {instructors.map((instructor) => (
-                          <TableRow key={instructor.id}>
-                            <TableCell className="font-medium">{instructor.full_name}</TableCell>
-                            <TableCell>{instructor.email || '-'}</TableCell>
-                            <TableCell>{instructor.phone || '-'}</TableCell>
-                            <TableCell className='pr-[2rem]'>{formatDate(instructor.created_at || '')}</TableCell>
-                            <TableCell>
-                              <div className="flex justify-center">
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  onClick={async () => {
-                                    setLoading(true);
-                                    await checkInstructorAssignments(instructor.id);
-                                    setSelectedInstructor(instructor);
-                                    setShowDeleteConfirm(true);
-                                    setLoading(false);
-                                  }}
-                                >
-                                  <UserX className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent> */}
+          {/* מדריכים */}           
 
 <TabsContent value="instructors">
   <Card>
@@ -1666,62 +1392,7 @@ const getRoleBadge = (role: string) => {
                     <p>אין תאריכים חסומים במערכת</p>
                   </div>
                 ) 
-                //   <div className="grid gap-3">
-                //     {blockedDates.map((blockedDate) => (
-                //       <div 
-                //         key={blockedDate.id}
-                //         className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200"
-                //       >
-                //         <div className="flex items-center gap-3">
-                //           <CalendarX className="h-5 w-5 text-orange-600" />
-                //           <div>
-                //             <span className="font-medium">{formatDate(blockedDate.date)}</span>
-                //             {blockedDate.reason && (
-                //               <span className="text-sm text-gray-600 mr-2">- {blockedDate.reason}</span>
-                //             )}
-                //           </div>
-                //         </div>
-                //         <Button
-                //           size="sm"
-                //           variant="ghost"
-                //           onClick={() => deleteBlockedDate(blockedDate.id)}
-                //         >
-                //           <X className="h-4 w-4 text-red-600" />
-                //         </Button>
-                //       </div>
-                //     ))}
-                //   </div>
-//             : (    <div className="grid gap-3">
-//   {blockedDates.map((blockedDate) => (
-//     <div 
-//       key={blockedDate.id}
-//       className="flex items-center flex-row-reverse justify-between p-3 bg-orange-50 rounded-lg border border-orange-200"
-//     >
-//       <div className="flex items-center  gap-3">
-//         <CalendarX className="h-5 w-5 text-orange-600" />
-//         <div>
-//           <span className="font-medium">{formatBlockedDate(blockedDate)}-</span>
-//           {blockedDate.reason && (
-//             <span className="text-sm text-gray-600 mr-2"> {blockedDate.reason}</span>
-//           )}
-//           {/* Show if it's a range */}
-//           {blockedDate.start_date && blockedDate.end_date && blockedDate.start_date !== blockedDate.end_date && (
-//             <span className="text-xs text-orange-600 bg-orange-100 px-2 py-1 rounded mr-2">
-//               טווח תאריכים
-//             </span>
-//           )}
-//         </div>
-//       </div>
-//       <Button
-//         size="sm"
-//         variant="ghost"
-//         onClick={() => deleteBlockedDate(blockedDate.id)}
-//       >
-//         <X className="h-4 w-4 text-red-600" />
-//       </Button>
-//     </div>
-//   ))}
-// </div>
+         
 : (
   <div className="grid gap-3">
     {blockedDates.map((blockedDate) => (
@@ -1925,85 +1596,7 @@ const getRoleBadge = (role: string) => {
 </Dialog>
         
         
-        {/* <Dialog open={showInstitutionModal} onOpenChange={setShowInstitutionModal}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>
-                {editingInstitution ? 'עריכת מוסד חינוכי' : 'הוספת מוסד חינוכי'}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="name">שם המוסד *</Label>
-                  <Input
-                    id="name"
-                    value={institutionForm.name}
-                    onChange={(e) => setInstitutionForm({ ...institutionForm, name: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="city">עיר *</Label>
-                  <Input
-                    id="city"
-                    value={institutionForm.city}
-                    onChange={(e) => setInstitutionForm({ ...institutionForm, city: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="address">כתובת</Label>
-                <Input
-                  id="address"
-                  value={institutionForm.address}
-                  onChange={(e) => setInstitutionForm({ ...institutionForm, address: e.target.value })}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="contact_person">איש קשר</Label>
-                  <Input
-                    id="contact_person"
-                    value={institutionForm.contact_person}
-                    onChange={(e) => setInstitutionForm({ ...institutionForm, contact_person: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="contact_phone">טלפון</Label>
-                  <Input
-                    id="contact_phone"
-                    value={institutionForm.contact_phone}
-                    onChange={(e) => setInstitutionForm({ ...institutionForm, contact_phone: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="contact_email">אימייל איש קשר</Label>
-                <Input
-                  id="contact_email"
-                  type="email"
-                  value={institutionForm.contact_email}
-                  onChange={(e) => setInstitutionForm({ ...institutionForm, contact_email: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label htmlFor="notes">הערות</Label>
-                <Textarea
-                  id="notes"
-                  value={institutionForm.notes}
-                  onChange={(e) => setInstitutionForm({ ...institutionForm, notes: e.target.value })}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-                <Button variant="ghost" onClick={closeInstitutionModal}>ביטול</Button>
-                <Button onClick={saveInstitution} disabled={loading}>
-                    {loading ? <Loader2 className="animate-spin" /> : 'שמור'}
-                </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog> */}
-
+       
         {/* Delete Instructor Confirmation Modal */}
         <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
             <DialogContent>
@@ -2048,45 +1641,8 @@ const getRoleBadge = (role: string) => {
             </DialogContent>
         </Dialog>
 
-        {/* Add Blocked Date Modal
-        <Dialog open={showBlockedDateModal} onOpenChange={setShowBlockedDateModal}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>הוספת תאריך חסום</DialogTitle>
-                    <DialogDescription>
-                        בחר תאריך וסיבה (אופציונלי) לחסימה. לא ניתן יהיה לתזמן שיעורים בתאריך זה.
-                    </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                    <div>
-                        <Label htmlFor="blocked-date">תאריך</Label>
-                        <Input 
-                            id="blocked-date"
-                            type="date"
-                            value={newBlockedDate.date}
-                            onChange={(e) => setNewBlockedDate({...newBlockedDate, date: e.target.value})}
-                        />
-                    </div>
-                    <div>
-                        <Label htmlFor="reason">סיבה (חג, חופשה וכו')</Label>
-                        <Input 
-                            id="reason"
-                            type="text"
-                            value={newBlockedDate.reason}
-                            onChange={(e) => setNewBlockedDate({...newBlockedDate, reason: e.target.value})}
-                        />
-                    </div>
-                </div>
-                <DialogFooter>
-                    <Button variant="ghost" onClick={() => setShowBlockedDateModal(false)}>ביטול</Button>
-                    <Button onClick={addBlockedDate} disabled={loading}>
-                        {loading ? <Loader2 className="animate-spin" /> : 'הוסף תאריך'}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog> */}
-
-
+      
+       
 
 
 
