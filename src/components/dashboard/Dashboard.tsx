@@ -249,10 +249,7 @@ const calculateRewardsTotal = (leads: any[]) => {
     return sum + (lead.potential_value || 0);
   }, 0);
 
-  // Calculate different reward types based on potential values
-  // const teaching_incentives = Math.floor(totalPotentialValue * 0.4); // 40% for teaching incentives
-  // const closing_bonuses = Math.floor(totalPotentialValue * 0.3); // 30% for closing bonuses  
-  // const team_rewards = Math.floor(totalPotentialValue * 0.1); // 10% for team rewards
+ 
   return totalPotentialValue;
 };
 
