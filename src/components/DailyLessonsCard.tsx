@@ -371,7 +371,7 @@ const renderStatusBadge = () => {
       <button
         onClick={() =>
           nav(
-            `/lesson-report/${lesson.lesson_id}?scheduleId=${item.id}&courseInstanceId=${lesson.course_instance_id}&instructorId=${lesson.instructor_id}`,
+            `/lesson-report/${lesson.lesson_id}?scheduleId=${lesson.id}&courseInstanceId=${lesson.course_instance_id}&instructorId=${lesson.instructor_id}`,
             { state: { selectedDate: new Date().toISOString() } }
           )
         }
@@ -401,7 +401,7 @@ const renderStatusBadge = () => {
           <button
             onClick={() =>
               nav(
-                `/lesson-report/${lesson.lesson_id}?scheduleId=${item.id}&courseInstanceId=${lesson.course_instance_id}&editReportId=${lessonStatus.reportId}&instructorId=${lesson.instructor_id}`
+                `/lesson-report/${lesson.lesson_id}?scheduleId=${lesson.id}&courseInstanceId=${lesson.course_instance_id}&editReportId=${lessonStatus.reportId}&instructorId=${lesson.instructor_id}`
               )
             }
             className="bg-orange-500 text-white px-3 py-2 rounded-lg font-bold text-sm transition-colors hover:bg-orange-600 shadow-md"
