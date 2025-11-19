@@ -146,15 +146,15 @@ const sortedLessons = lessons.sort((a, b) => {
     let key = '';
     
     // Try new architecture first (course_instance_id + lesson_id)
-    if (lessonItem.course_instance_id && lessonItem.lesson_id) {
-      key = `${lessonItem.course_instance_id}_${lessonItem.lesson_id}`;
-    } else if (lessonItem.course_instance_id && lessonItem.lesson?.id) {
-      key = `${lessonItem.course_instance_id}_${lessonItem.lesson.id}`;
-    } else if (lessonItem.id) {
-      // Try legacy architecture
-      key = lessonItem.id;
-    }
-    
+if (lessonItem.id) {
+  key = lessonItem.id;
+} else if (lessonItem.course_instance_id && lessonItem.lesson?.id) {
+  key = `${lessonItem.course_instance_id}_${lessonItem.lesson.id}`;
+} else if (lessonItem.course_instance_id && lessonItem.lesson_id) {
+  key = `${lessonItem.course_instance_id}_${lessonItem.lesson_id}`;
+}
+
+    console.log('schedule id is :',lessonItem.id)
     console.log('Looking for key:', key, 'in map keys:', Array.from(reportStatusMap.keys()));
     
     if (key && reportStatusMap.has(key)) {
@@ -168,7 +168,7 @@ const sortedLessons = lessons.sort((a, b) => {
  return (
   <div className="schedule-list-container flex flex-col gap-3 px-2 py-4 sm:px-4 sm:py-6 max-w-4xl w-full mx-auto">
     {sortedLessons.map((item, index) => {
-      console.log("item", item);
+      console.log("item", item.id);
 
       const instructorName =
         instructorMap.get(item?.course_instances?.instructor?.id) ||
@@ -213,7 +213,7 @@ const sortedLessons = lessons.sort((a, b) => {
               const reportId = getReportIdForLesson(item);
               if (reportId) {
                 nav(
-                  `/lesson-report/${item?.lesson?.id}?courseInstanceId=${item.course_instance_id}&editReportId=${reportId}`,
+                  `/lesson-report/${item?.lesson?.id}?scheduleId=${item.id}&courseInstanceId=${item.course_instance_id}&editReportId=${reportId}`,
                   {
                     state: { selectedDate: selectedDate?.toISOString() },
                   }
@@ -280,7 +280,7 @@ const sortedLessons = lessons.sort((a, b) => {
               const reportId = getReportIdForLesson(item);
               if (reportId) {
                 nav(
-                  `/lesson-report/${item?.lesson?.id}?courseInstanceId=${item.course_instance_id}&editReportId=${reportId}`,
+                  `/lesson-report/${item?.lesson?.id}?scheduleId=${item.id}&courseInstanceId=${item.course_instance_id}&editReportId=${reportId}`,
                   {
                     state: { selectedDate: selectedDate?.toISOString() },
                   }
@@ -307,7 +307,7 @@ const sortedLessons = lessons.sort((a, b) => {
       <button
         onClick={() =>
           nav(
-            `/lesson-report/${item?.lesson?.id}?courseInstanceId=${item.course_instance_id}&instructorId=${
+            `/lesson-report/${item?.lesson?.id}?scheduleId=${item.id}&courseInstanceId=${item.course_instance_id}&instructorId=${
               item.course_instances?.instructor?.id || item.instructor_id
             }`,
             { state: { selectedDate: selectedDate?.toISOString() } }
