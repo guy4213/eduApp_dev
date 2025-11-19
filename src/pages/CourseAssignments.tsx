@@ -446,7 +446,7 @@ const CourseAssignments = () => {
   // --- Effects ---
   useEffect(() => {
     fetchFilterOptions(); // Fetch dropdown options once on mount
-  }, [fetchFilterOptions]);
+  }, []);
 
   // Fetch assignments when user, page, filters, or filter options change
   useEffect(() => {

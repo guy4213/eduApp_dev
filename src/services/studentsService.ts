@@ -1,16 +1,10 @@
-import { supabase } from "@/integrations/supabase/client";
+/**
+ * Students Service
+ * Re-exports from centralized apiService for backward compatibility
+ * @deprecated Consider importing directly from apiService instead
+ */
+import { fetchStudentsByCourseInstance } from "./apiService";
 
 export async function getStudentsByCourseInstance(courseInstanceId: string) {
-  const { data, error } = await supabase
-    .from('students')
-    .select('*')
-    .eq('course_instance_id', courseInstanceId)
-    .order('full_name');
-
-  if (error) {
-    console.error('getStudentsByCourseInstance error:', error.message);
-    return [];
-  }
-
-  return data || [];
+  return fetchStudentsByCourseInstance(courseInstanceId);
 }

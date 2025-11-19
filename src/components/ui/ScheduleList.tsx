@@ -24,22 +24,6 @@ const sortedLessons = lessons.sort((a, b) => {
   return timeA - timeB;
 });
 
-  useEffect(() => {
-    const fetchInstructors = async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .eq("role", "instructor");
-
-      if (error) {
-        console.error("Error fetching instructors:", error.message);
-      } else {
-        setInstructors(data || []);
-      }
-    };
-
-    fetchInstructors();
-  }, []);
 
     const fetchReportedSchedules = async () => {
     // Get lesson reports with their associated reported_lesson_instances
@@ -348,7 +332,7 @@ const sortedLessons = lessons.sort((a, b) => {
 };
 
       // ✅ שים לב – זה התנאי הנכון להצגת כל כרטיס
-      if (instructorName === null) return null;
+      // if (instructorName === null) return null;
 
       return (
         <div

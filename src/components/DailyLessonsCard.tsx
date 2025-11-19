@@ -79,83 +79,6 @@ const [reportStatusMap, setReportStatusMap] = useState<Map<string, {
   scheduleId?: string  // ⬅️ נוסיף גם את schedule ID
 }>>(new Map());
 
-// useEffect(() => {
-//   async function fetchReportedSchedules() {
-//     // Get lesson reports with their associated reported_lesson_instances
-//     const { data: lessonReports, error } = await supabase
-//       .from("lesson_reports")
-//       .select(`
-//         id,
-//         is_completed,
-//         is_lesson_ok,
-//         reported_lesson_instances (
-//           lesson_schedule_id,
-//           course_instance_id,
-//           lesson_id,
-//           scheduled_date
-//         )
-//       `);
-
-//     if (error) {
-//       console.error('Failed to fetch lesson reports:', error);
-//       return;
-//     }
-
-//     // Create a set of reported lesson instance IDs and status map
-//     const reportedIds = new Set<string>();
-//     const statusMap = new Map<string, {isCompleted: boolean, isLessonOk: boolean}>();
-    
-//     lessonReports?.forEach((report: any) => {
-//       // A lesson report can have multiple reported_lesson_instances
-//       report.reported_lesson_instances?.forEach((instance: any) => {
-//         let key = '';
-//         if (instance.lesson_schedule_id) {
-//           // Legacy architecture: use lesson_schedule_id
-//           key = instance.lesson_schedule_id;
-//           reportedIds.add(instance.lesson_schedule_id);
-//         } else if (instance.course_instance_id && instance.lesson_id) {
-//           // New architecture: create a composite key for course_instance_id + lesson_id
-//           key = `${instance.course_instance_id}_${instance.lesson_id}`;
-//           reportedIds.add(key);
-//         }
-
-//         // Store the status for this lesson
-//         if (key) {
-//           statusMap.set(key, {
-//             isCompleted: report.is_completed !== false, // Default to true if null
-//             isLessonOk: report.is_lesson_ok || false
-//           });
-//         }
-//       });
-//     });
-    
-//     setReportedScheduleIds(reportedIds);
-//     setReportStatusMap(statusMap);
-//   }
-
-//   fetchReportedSchedules();
-  
-//   // Set up real-time subscription to listen for changes
-//   const channel = supabase
-//     .channel('lesson_reports_changes')
-//     .on(
-//       'postgres_changes',
-//       {
-//         event: '*',
-//         schema: 'public',
-//         table: 'lesson_reports'
-//       },
-//       () => {
-//         // Refresh data when lesson reports change
-//         fetchReportedSchedules();
-//       }
-//     )
-//     .subscribe();
-
-//   return () => {
-//     supabase.removeChannel(channel);
-//   };
-// }, []);
 
 useEffect(() => {
   async function fetchReportedSchedules() {
@@ -337,7 +260,6 @@ const instructorMap = useMemo(() => {
 
   const map = new Map<string, string>();
   instructors
-    // .filter(instr => lessonInstructorIds.has(instr.id))
     .forEach(instr => map.set(instr.id, instr.full_name));
 
   return map;
@@ -531,7 +453,7 @@ const renderStatusBadge = () => {
 };
 
 
-           if (!instructorName) return null;
+          //  if (!instructorName) return null;
         return (
          
             <div
