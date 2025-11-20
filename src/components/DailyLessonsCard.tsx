@@ -81,59 +81,46 @@ const [reportStatusMap, setReportStatusMap] = useState<Map<string, {
 
 
 useEffect(() => {
-  async function fetchReportedSchedules() {
-    const { data: lessonReports, error } = await supabase
-      .from("lesson_reports")
-      .select(`
-        id,
-        is_completed,
-        is_lesson_ok,
-        reported_lesson_instances (
-          lesson_schedule_id,
-          course_instance_id,
-          lesson_id,
-          scheduled_date
-        )
-      `);
+async function fetchReportedSchedules() {
+  const { data: lessonReports, error } = await supabase
+    .from("lesson_reports")
+    .select(`
+      id,
+      is_completed,
+      is_lesson_ok,
+      lesson_schedule_id
+    `);
 
-    if (error) {
-      console.error('Failed to fetch lesson reports:', error);
-      return;
-    }
-
-    const reportedIds = new Set<string>();
-    const statusMap = new Map<string, {
-      isCompleted: boolean,
-      isLessonOk: boolean,
-      reportId: string,
-      scheduleId?: string
-    }>();
-
-    lessonReports?.forEach((report: any) => {
-      report.reported_lesson_instances?.forEach((instance: any) => {
-        let key = '';
-        if (instance.lesson_schedule_id) {
-          key = instance.lesson_schedule_id;
-          reportedIds.add(instance.lesson_schedule_id);
-        } else if (instance.course_instance_id && instance.lesson_id) {
-          key = `${instance.course_instance_id}_${instance.lesson_id}`;
-          reportedIds.add(key);
-        }
-
-        if (key) {
-          statusMap.set(key, {
-            isCompleted: report.is_completed !== false,
-            isLessonOk: report.is_lesson_ok || false,
-            reportId: report.id,
-            scheduleId: instance.lesson_schedule_id  // ⬅️ שמור גם את schedule ID
-          });
-        }
-      });
-    });
-    console.log('lessonReports',lessonReports)
-    setReportedScheduleIds(reportedIds);
-    setReportStatusMap(statusMap);
+  if (error) {
+    console.error("Failed to fetch lesson reports:", error);
+    return;
   }
+
+  const reportedIds = new Set<string>();
+  const statusMap = new Map<
+    string,
+    {
+      isCompleted: boolean;
+      isLessonOk: boolean;
+      reportId: string;
+    }
+  >();
+
+  lessonReports?.forEach((report) => {
+    if (!report.lesson_schedule_id) return;
+
+    reportedIds.add(report.lesson_schedule_id);
+    statusMap.set(report.lesson_schedule_id, {
+      isCompleted: report.is_completed ?? false,
+      isLessonOk: report.is_lesson_ok ?? false,
+      reportId: report.id,
+    });
+  });
+
+  setReportedScheduleIds(reportedIds);
+  setReportStatusMap(statusMap);
+}
+
 
   fetchReportedSchedules();
   
@@ -154,10 +141,7 @@ useEffect(() => {
 }, []);
 
 function getLessonKey(lesson: any) {
-  if (lesson.lesson_schedule_id) return lesson.lesson_schedule_id;
-  if (lesson.course_instance_id && lesson.lesson_id)
-    return `${lesson.course_instance_id}_${lesson.lesson_id}`;
-  return null;
+  return lesson.id || null; // scheduleId בלבד
 }
   const handlePostponeSchedule = async (scheduleId: string, reportId: string) => {
     if (!scheduleId || !reportId) {
@@ -288,6 +272,7 @@ const instructorMap = useMemo(() => {
 
     <CardContent className="p-6 space-y-4">
       {sortedClasses.map((lesson) => {
+      console.log('lesson',lesson)
         const colorKey = lesson.color || getColorById(lesson.lesson_id);
         const color = statusColors[colorKey];
 
@@ -352,7 +337,7 @@ const renderStatusBadge = () => {
           <button
             onClick={() =>
               nav(
-                `/lesson-report/${lesson.lesson_id}?courseInstanceId=${lesson.course_instance_id}&editReportId=${lessonStatus.reportId}&instructorId=${lesson.instructor_id}`,
+                `/lesson-report/${lesson.lesson_id}?scheduleId=${lesson.id}&courseInstanceId=${lesson.course_instance_id}&editReportId=${lessonStatus.reportId}&instructorId=${lesson.instructor_id}`,
                 { state: { selectedDate: new Date().toISOString() } }
               )
             }
@@ -412,7 +397,7 @@ const renderStatusBadge = () => {
       </div>
     );
   }
-
+  
   // ✅ Case 4: Lesson occurred but not ok
   if (lessonStatus?.isCompleted && lessonStatus?.isLessonOk === false) {
     return (
