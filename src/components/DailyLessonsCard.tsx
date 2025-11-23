@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { postponeScheduleToNextDay } from "@/utils/scheduleUtils";
 import { useToast } from "@/hooks/use-toast";
+import { fetchInstructors } from "@/services/apiService";
 
 interface LessonCardProps {
   id: string;
@@ -219,23 +220,18 @@ function getLessonKey(lesson: any) {
   const nav=useNavigate();
    const [instructors, setInstructors] = useState<{ id: string; full_name: string }[]>([]);
    const {user}=useAuth();
-    // Fetch instructors once
+    // Fetch instructors once using apiService function
     useEffect(() => {
-     
-      const fetchInstructors = async () => {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("id, full_name")
-          .eq("role", "instructor");
-  
-        if (error) {
-          console.error("Error fetching instructors:", error.message);
-        } else {
+      const loadInstructors = async () => {
+        try {
+          const data = await fetchInstructors();
           setInstructors(data || []);
+        } catch (error) {
+          console.error("Error fetching instructors:", error);
         }
       };
-  
-      fetchInstructors();
+
+      loadInstructors();
     }, []);
   
     // Create a lookup map for fast access

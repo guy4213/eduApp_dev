@@ -50,6 +50,14 @@ import { Pagination } from "@/components/ui/Pagination"; // Pagination component
 // Import service functions
 import { formatDate, formatDateTime } from "@/services/formattersService";
 import { groupTasksByLesson, formatCourseData } from "@/services/coursesHelpers";
+import {
+  fetchCoursesWithPagination,
+  fetchLessonsByCourses,
+  fetchTasksForLessons,
+  fetchInstructors,
+  checkCourseAssignments,
+  deleteCourseTemplate
+} from "@/services/apiService";
 
 interface Task {
   id: string;
@@ -140,25 +148,9 @@ const Courses = () => {
     setLoading(true);
 
     try {
-      // Check for course assignments by querying course_instances
-      const { data, error } = await supabase
-        .from("course_instances")
-        .select(
-          `
-          id,
-          educational_institutions (name),
-          profiles (full_name)
-        `
-        )
-        .eq("course_id", course.id);
-
-      if (error) {
-        console.error("Error checking for course assignments:", error);
-        // You can add a toast notification here for the user
-        return;
-      }
-
-      setAssignmentDetails(data || []);
+      // Check for course assignments using apiService function
+      const assignments = await checkCourseAssignments(course.id);
+      setAssignmentDetails(assignments);
       setShowDeleteDialog(true);
     } catch (error) {
       console.error("An unexpected error occurred:", error);
@@ -171,53 +163,34 @@ const Courses = () => {
     if (!courseToDelete || assignmentDetails.length > 0) return;
 
     setLoading(true);
-    // Use the RPC function to safely delete the course and its dependencies
-    const { error } = await supabase.rpc("delete_course_template", {
-      p_course_id: courseToDelete.id,
-    });
-
-    if (error) {
-      console.error("Error deleting course:", error);
-      // You can add an error toast here for the user
-    } else {
-      // Deletion was successful
+    try {
+      // Use apiService function to safely delete the course and its dependencies
+      await deleteCourseTemplate(courseToDelete.id);
       console.log("Course deleted successfully");
       setShowDeleteDialog(false);
       setCourseToDelete(null);
-      await fetchCourses(); // Refresh the list of courses
-      // You can add a success toast here
+      await fetchCoursesData(); // Refresh the list of courses
+    } catch (error) {
+      console.error("Error deleting course:", error);
+      // You can add an error toast here for the user
     }
     setLoading(false);
   };
 
-  const fetchCourses = async () => {
+  const fetchCoursesData = async () => {
     if (!user) return;
 
     try {
       // Only fetch template courses for the courses page
       // Course instances are now handled in the CourseAssignments page
 
-      // Fetch courses with pagination
+      // Fetch courses with pagination using apiService function
       const start = currentPage * pageSize;
       const end = start + pageSize - 1;
-
-      const { data: allCoursesData, error: coursesError, count } = await supabase
-        .from("courses")
-        .select(`
-          id,
-          name,
-          school_type,
-          presentation_link,
-          program_link,
-          created_at
-        `, { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range(start, end);
+      const { data: allCoursesData, count } = await fetchCoursesWithPagination(start, end);
 
       // Store total count for pagination
       setTotalCount(count || 0);
-
-      if (coursesError) throw coursesError;
 
       // Fetch lessons and tasks for template courses
       const allCourseIds = allCoursesData?.map((course) => course.id) || [];
@@ -225,48 +198,23 @@ const Courses = () => {
       let tasksData: any[] = [];
 
       if (allCourseIds.length > 0) {
-        // Fetch lessons
-
-        const { data: lessons, error: lessonsError } = await supabase.rpc(
-          "get_lessons_by_courses",
-          { course_ids: allCourseIds }
+        // Fetch lessons using apiService function
+        const lessons = await fetchLessonsByCourses(allCourseIds);
+        lessonsData = (lessons || []).filter(
+          (lesson: any) => lesson.course_instance_id === null
         );
-        if (lessonsError) {
-          console.error("Error fetching lessons:", lessonsError);
-        } else {
-          lessonsData = (lessons || []).filter(
-            (lesson) => lesson.course_instance_id === null
-          );
-        }
 
-        // Fetch tasks for all lessons
+        // Fetch tasks for all lessons using apiService function
         const lessonIds = lessonsData
-          .map((lesson) => lesson.id)
+          .map((lesson: any) => lesson.id)
           .filter(Boolean);
         if (lessonIds.length > 0) {
-          const { data: tasks, error: tasksError } = await supabase
-            .from("lesson_tasks")
-            .select("*")
-            .in("lesson_id", lessonIds)
-            .order("order_index");
-
-          if (tasksError) {
-            console.error("Error fetching tasks:", tasksError);
-          } else {
-            tasksData = tasks || [];
-          }
+          tasksData = await fetchTasksForLessons(lessonIds);
         }
       }
 
-      // Fetch instructors data
-      const { data: instructorsData, error: instructorsError } = await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .eq("role", "instructor");
-
-      if (instructorsError) {
-        console.error("Error fetching instructors:", instructorsError);
-      }
+      // Fetch instructors data using apiService function (for future use)
+      const instructorsData = await fetchInstructors();
 
       // Format template courses only using the service function
       const formattedTemplateCourses =
@@ -283,7 +231,7 @@ const Courses = () => {
   };
 
   useEffect(() => {
-    fetchCourses();
+    fetchCoursesData();
   }, [user, currentPage]); // Added currentPage dependency
 
   // Filter courses based on school type
@@ -299,7 +247,7 @@ const Courses = () => {
   }, [courses, schoolTypeFilter]);
 
   const handleCourseCreated = () => {
-    fetchCourses();
+    fetchCoursesData();
   };
 
   const handleAssignCourse = (
@@ -316,7 +264,7 @@ const Courses = () => {
   };
 
   const handleAssignmentComplete = () => {
-    fetchCourses();
+    fetchCoursesData();
   };
 
   const handleEditCourse = (course: Course) => {

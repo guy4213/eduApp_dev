@@ -52,6 +52,13 @@ import {
   getProgressFromStatus
 } from "@/services/salesLeadsHelpers";
 import { extractCityFromAddress } from "@/services/addressService";
+import {
+  fetchSalesLeads,
+  updateSalesLeadStatus as updateSalesLeadStatusApi,
+  updateSalesLeadValue as updateSalesLeadValueApi,
+  fetchInstructors,
+  fetchInstitutionsWithAddress
+} from "@/services/apiService";
 
 interface SalesLead {
   id: string;
@@ -143,7 +150,7 @@ const [priceValues, setPriceValues] = useState<{ [key: string]: number }>({});
   };
 
   useEffect(() => {
-    fetchSalesLeads();
+    fetchSalesLeadsData();
   }, []);
 
   // Combined filtering effect (for all authenticated users)
@@ -213,28 +220,18 @@ const [priceValues, setPriceValues] = useState<{ [key: string]: number }>({});
     setSelectedCity("all");
   };
 
-  const fetchSalesLeads = useCallback(async () => {
+  const fetchSalesLeadsData = useCallback(async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('sales_leads')
-        .select(`
-          *,
-          instructor:profiles(id, full_name, phone)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching sales leads:', error);
-        return;
-      }
-      console.log("SALES",data)
+      // Use apiService function to fetch sales leads
+      const data = await fetchSalesLeads();
+      console.log("SALES", data);
       setSalesLeads(data || []);
       setFilteredSalesLeads(data || []);
-      
+
       // Fetch additional data for filters
       await fetchFilterData(data || []);
-      
+
     } catch (error) {
       console.error('Error fetching sales leads:', error);
     } finally {
@@ -244,79 +241,56 @@ const [priceValues, setPriceValues] = useState<{ [key: string]: number }>({});
 
   const fetchFilterData = async (salesData: SalesLead[]) => {
     try {
-      // Fetch instructors
-      const { data: instructorsData, error: instructorsError } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .eq('role', 'instructor')
-        .order('full_name');
+      // Fetch instructors using apiService function
+      const instructorsData = await fetchInstructors();
+      setInstructors(instructorsData || []);
 
-      if (instructorsError) {
-        console.error('Error fetching instructors:', instructorsError);
-      } else {
-        setInstructors(instructorsData || []);
-      }
+      // Fetch institutions with address data using apiService function
+      const institutionsData = await fetchInstitutionsWithAddress();
 
-      // Fetch institutions with address data
-      const { data: institutionsData, error: institutionsError } = await supabase
-        .from('educational_institutions')
-        .select('name, address')
-        .order('name');
+      // Extract cities from addresses and combine with institution names
+      const institutionsWithCities = (institutionsData || []).map((inst: any) => {
+        const city = extractCityFromAddress(inst.address || '');
+        return { name: inst.name, city };
+      });
 
-      if (institutionsError) {
-        console.error('Error fetching institutions:', institutionsError);
-      } else {
-        // Extract cities from addresses and combine with institution names
-        const institutionsWithCities = (institutionsData || []).map(inst => {
-          const city = extractCityFromAddress(inst.address || '');
-          return { name: inst.name, city };
-        });
-        
-        // Also include institutions from sales leads that might not be in educational_institutions table
-        const salesInstitutions = salesData.map(lead => {
-          return { name: lead.institution_name, city: 'לא צוין' };
-        });
-        
-        // Combine and deduplicate
-        const allInstitutions = [...institutionsWithCities, ...salesInstitutions];
-        const uniqueInstitutions = allInstitutions.filter((inst, index, self) => 
-          index === self.findIndex(i => i.name === inst.name)
-        );
-        
-        setInstitutions(uniqueInstitutions);
-        
-        // Extract unique cities
-        const uniqueCities = [...new Set(uniqueInstitutions.map(inst => inst.city).filter(city => city && city !== 'לא צוין'))];
-        setCities(uniqueCities.sort());
-      }
-      
+      // Also include institutions from sales leads that might not be in educational_institutions table
+      const salesInstitutions = salesData.map(lead => {
+        return { name: lead.institution_name, city: 'לא צוין' };
+      });
+
+      // Combine and deduplicate
+      const allInstitutions = [...institutionsWithCities, ...salesInstitutions];
+      const uniqueInstitutions = allInstitutions.filter((inst, index, self) =>
+        index === self.findIndex(i => i.name === inst.name)
+      );
+
+      setInstitutions(uniqueInstitutions);
+
+      // Extract unique cities
+      const uniqueCities = [...new Set(uniqueInstitutions.map(inst => inst.city).filter(city => city && city !== 'לא צוין'))];
+      setCities(uniqueCities.sort());
+
     } catch (error) {
       console.error('Error fetching filter data:', error);
     }
   };
 
   const updateLeadValue = async (leadId: string, newValue: number) => {
-  try {
-    const { error } = await supabase
-      .from('sales_leads')
-      .update({ potential_value: newValue })
-      .eq('id', leadId);
+    try {
+      // Use apiService function to update lead value
+      await updateSalesLeadValueApi(leadId, newValue);
 
-    if (error) {
+      setSalesLeads(prev =>
+        prev.map(lead =>
+          lead.id === leadId ? { ...lead, potential_value: newValue } : lead
+        )
+      );
+
+    } catch (error) {
       console.error('Error updating lead value:', error);
-      return;
     }
-
-    setSalesLeads(prev =>
-      prev.map(lead =>
-        lead.id === leadId ? { ...lead, potential_value: newValue } : lead
-      )
-    );
-
-  } catch (error) {
-    console.error('Error updating lead value:', error);
-  }
-};
+  };
 
 const pendingClosures = filteredSalesLeads.filter(
 
@@ -325,31 +299,20 @@ const pendingClosures = filteredSalesLeads.filter(
 
   const updateLeadStatus = async (leadId: string, newStatus: string) => {
     try {
-      const { error } = await supabase
-        .from('sales_leads')
-        .update({ 
-          status: newStatus,
-          // If closing the lead, set closed_at date
-          ...(newStatus.startsWith('closed_') ? { closed_at: new Date().toISOString() } : {})
-        })
-        .eq('id', leadId);
-
-      if (error) {
-        console.error('Error updating lead status:', error);
-        return;
-      }
+      // Use apiService function to update lead status
+      await updateSalesLeadStatusApi(leadId, newStatus);
 
       // Update local state
-      setSalesLeads(prev => prev.map(lead => 
-        lead.id === leadId 
-          ? { 
-              ...lead, 
+      setSalesLeads(prev => prev.map(lead =>
+        lead.id === leadId
+          ? {
+              ...lead,
               status: newStatus,
               ...(newStatus.startsWith('closed_') ? { closed_at: new Date().toISOString() } : {})
             }
           : lead
       ));
-      
+
     } catch (error) {
       console.error('Error updating lead status:', error);
     }
@@ -790,7 +753,7 @@ const pendingClosures = filteredSalesLeads.filter(
           open={isAssignmentDialogOpen}
           onOpenChange={setIsAssignmentDialogOpen}
           onLeadCreated={() => {
-            fetchSalesLeads(); // Refresh the leads list
+            fetchSalesLeadsData(); // Refresh the leads list
           }}
         />
       </main>
