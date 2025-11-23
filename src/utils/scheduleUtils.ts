@@ -493,13 +493,14 @@ export const fetchAndGenerateSchedules = async (
       .from('course_instance_schedules')
       .select(`
         *,
-        course_instances:course_instance_id (
+        course_instances:course_instance_id!inner (
           id,
           course_id,
           start_date,
           end_date,
           grade_level,
           lesson_mode,
+          is_visible,
           course:course_id (
             id,
             name
@@ -513,7 +514,8 @@ export const fetchAndGenerateSchedules = async (
             full_name
           )
         )
-      `);
+      `)
+      .eq('course_instances.is_visible', true); // Only show schedules for visible course instances
 
     if (courseInstanceIds) {
       if (Array.isArray(courseInstanceIds)) {
@@ -690,6 +692,7 @@ export const filterSchedulesByDateRange = (
 /**
  * Fetches physical schedules filtered by date range from the database
  * This is much more efficient than loading all schedules and filtering in JavaScript
+ * Only returns schedules for visible course instances (is_visible = true)
  */
 export const fetchSchedulesByDateRange = async (
   startDate: Date,
@@ -698,7 +701,7 @@ export const fetchSchedulesByDateRange = async (
   user?:any
 ): Promise<any[]> => {
   try {
-    
+
     console.log(`[fetchSchedulesByDateRange] ====== START ======`);
     console.log(`[fetchSchedulesByDateRange] Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
     console.log(`[fetchSchedulesByDateRange] Course instance IDs filter:`, courseInstanceIds);
@@ -713,12 +716,13 @@ let query = supabase
       course_id,
       course_instance_id
     ),
-    course_instances:course_instance_id (
+    course_instances:course_instance_id!inner (
       id,
       course_id,
       start_date,
       end_date,
       grade_level,
+      is_visible,
       course:course_id (
         id,
         name
@@ -733,6 +737,7 @@ let query = supabase
       )
     )
   `)
+  .eq('course_instances.is_visible', true) // Only show schedules for visible course instances
   .gte('scheduled_start', startDate.toISOString())
   .lte('scheduled_start', endDate.toISOString())
   .order('scheduled_start', { ascending: true });
@@ -1127,6 +1132,7 @@ export const generatePhysicalSchedulesFromPattern = async (
 
 /**
  * Fetches physical schedules from the database
+ * Only returns schedules for visible course instances (is_visible = true)
  */
 export const fetchPhysicalSchedules = async (
   courseInstanceIds?: string | string[]
@@ -1143,12 +1149,13 @@ export const fetchPhysicalSchedules = async (
           course_id,
           course_instance_id
         ),
-        course_instances:course_instance_id (
+        course_instances:course_instance_id!inner (
           id,
           course_id,
           start_date,
           end_date,
           grade_level,
+          is_visible,
           course:course_id (
             id,
             name
@@ -1164,6 +1171,7 @@ export const fetchPhysicalSchedules = async (
         )
       `)
       .eq('is_generated', false) // Only fetch physical schedules
+      .eq('course_instances.is_visible', true) // Only show schedules for visible course instances
       .order('scheduled_start', { ascending: true });
 
     if (courseInstanceIds) {
