@@ -486,14 +486,15 @@ export const generateLessonSchedulesFromPattern = async (
 
 
 export const fetchAndGenerateSchedules = async (
-  courseInstanceIds?: string | string[]
+  courseInstanceIds?: string | string[],
+  includeHidden: boolean = false
 ): Promise<GeneratedLessonSchedule[]> => {
   try {
     let query = supabase
       .from('course_instance_schedules')
       .select(`
         *,
-        course_instances:course_instance_id!inner (
+        course_instances:course_instance_id${includeHidden ? '' : '!inner'} (
           id,
           course_id,
           start_date,
@@ -514,8 +515,12 @@ export const fetchAndGenerateSchedules = async (
             full_name
           )
         )
-      `)
-      .eq('course_instances.is_visible', true); // Only show schedules for visible course instances
+      `);
+
+    // Only filter by is_visible when not including hidden
+    if (!includeHidden) {
+      query = query.eq('course_instances.is_visible', true);
+    }
 
     if (courseInstanceIds) {
       if (Array.isArray(courseInstanceIds)) {
@@ -632,11 +637,12 @@ export const fetchAndGenerateSchedules = async (
   }
 };
 export const fetchCombinedSchedules = async (
-  courseInstanceIds?: string | string[]
+  courseInstanceIds?: string | string[],
+  includeHidden: boolean = false
 ): Promise<any[]> => {
   try {
     // Fetch physical schedules from database
-    const physicalSchedules = await fetchPhysicalSchedules(courseInstanceIds);
+    const physicalSchedules = await fetchPhysicalSchedules(courseInstanceIds, includeHidden);
 
     console.log(`[fetchCombinedSchedules] Fetched ${physicalSchedules.length} physical schedules from DB`);
 
@@ -692,19 +698,23 @@ export const filterSchedulesByDateRange = (
 /**
  * Fetches physical schedules filtered by date range from the database
  * This is much more efficient than loading all schedules and filtering in JavaScript
- * Only returns schedules for visible course instances (is_visible = true)
+ * By default, only returns schedules for visible course instances (is_visible = true)
+ * Pass includeHidden: true to get ALL schedules (used by Reports/Salary pages)
  */
 export const fetchSchedulesByDateRange = async (
   startDate: Date,
   endDate: Date,
   courseInstanceIds?: string | string[],
-  user?:any
+  user?: any,
+  includeHidden: boolean = false
 ): Promise<any[]> => {
   try {
 
     console.log(`[fetchSchedulesByDateRange] ====== START ======`);
     console.log(`[fetchSchedulesByDateRange] Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
     console.log(`[fetchSchedulesByDateRange] Course instance IDs filter:`, courseInstanceIds);
+    console.log(`[fetchSchedulesByDateRange] Include hidden: ${includeHidden}`);
+
 let query = supabase
   .from('lesson_schedules')
   .select(`
@@ -716,7 +726,7 @@ let query = supabase
       course_id,
       course_instance_id
     ),
-    course_instances:course_instance_id!inner (
+    course_instances:course_instance_id${includeHidden ? '' : '!inner'} (
       id,
       course_id,
       start_date,
@@ -737,10 +747,14 @@ let query = supabase
       )
     )
   `)
-  .eq('course_instances.is_visible', true) // Only show schedules for visible course instances
   .gte('scheduled_start', startDate.toISOString())
   .lte('scheduled_start', endDate.toISOString())
   .order('scheduled_start', { ascending: true });
+
+// Only filter by is_visible when not including hidden
+if (!includeHidden) {
+  query = query.eq('course_instances.is_visible', true);
+}
 
 
 // 🔵 אם מורה — סינון לפי instructor_id
@@ -1132,10 +1146,12 @@ export const generatePhysicalSchedulesFromPattern = async (
 
 /**
  * Fetches physical schedules from the database
- * Only returns schedules for visible course instances (is_visible = true)
+ * By default, only returns schedules for visible course instances (is_visible = true)
+ * Pass includeHidden: true to get ALL schedules (used by Reports/Salary pages)
  */
 export const fetchPhysicalSchedules = async (
-  courseInstanceIds?: string | string[]
+  courseInstanceIds?: string | string[],
+  includeHidden: boolean = false
 ): Promise<any[]> => {
   try {
     let query = supabase
@@ -1149,7 +1165,7 @@ export const fetchPhysicalSchedules = async (
           course_id,
           course_instance_id
         ),
-        course_instances:course_instance_id!inner (
+        course_instances:course_instance_id${includeHidden ? '' : '!inner'} (
           id,
           course_id,
           start_date,
@@ -1171,8 +1187,12 @@ export const fetchPhysicalSchedules = async (
         )
       `)
       .eq('is_generated', false) // Only fetch physical schedules
-      .eq('course_instances.is_visible', true) // Only show schedules for visible course instances
       .order('scheduled_start', { ascending: true });
+
+    // Only filter by is_visible when not including hidden
+    if (!includeHidden) {
+      query = query.eq('course_instances.is_visible', true);
+    }
 
     if (courseInstanceIds) {
       if (Array.isArray(courseInstanceIds)) {

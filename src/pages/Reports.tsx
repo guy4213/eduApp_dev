@@ -266,7 +266,8 @@ const Reports = () => {
   useEffect(() => {
     const fetchSchedules = async () => {
       try {
-        const schedules = await fetchCombinedSchedules();
+        // Pass includeHidden: true to get ALL schedules including hidden course instances
+        const schedules = await fetchCombinedSchedules(undefined, true);
         setSchedulesCache(schedules);
       } catch (error) {
         console.error('Error fetching schedules:', error);
