@@ -110,6 +110,7 @@ export type Database = {
           id: string
           institution_id: string | null
           instructor_id: string | null
+          is_visible: boolean
           lesson_mode: string | null
           max_participants: number | null
           price_for_customer: number | null
@@ -126,6 +127,7 @@ export type Database = {
           id?: string
           institution_id?: string | null
           instructor_id?: string | null
+          is_visible?: boolean
           lesson_mode?: string | null
           max_participants?: number | null
           price_for_customer?: number | null
@@ -142,6 +144,7 @@ export type Database = {
           id?: string
           institution_id?: string | null
           instructor_id?: string | null
+          is_visible?: boolean
           lesson_mode?: string | null
           max_participants?: number | null
           price_for_customer?: number | null
@@ -184,6 +187,7 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          is_visible: boolean
           name: string
           presentation_link: string | null
           program_link: string | null
@@ -192,6 +196,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           id?: string
+          is_visible?: boolean
           name: string
           presentation_link?: string | null
           program_link?: string | null
@@ -200,6 +205,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           id?: string
+          is_visible?: boolean
           name?: string
           presentation_link?: string | null
           program_link?: string | null

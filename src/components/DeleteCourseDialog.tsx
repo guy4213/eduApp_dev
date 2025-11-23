@@ -9,7 +9,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { AlertTriangle, Trash2 } from "lucide-react";
+import { AlertTriangle, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface AssignmentDetail {
@@ -43,17 +43,17 @@ const DeleteCourseDialog: React.FC<DeleteCourseDialogProps> = ({
             {hasAssignments ? (
               <AlertTriangle className="h-6 w-6 text-yellow-500" />
             ) : (
-              <Trash2 className="h-6 w-6 text-red-500" />
+              <EyeOff className="h-6 w-6 text-orange-500" />
             )}
             {hasAssignments
-              ? "לא ניתן למחוק תוכנית לימוד משויכת"
-              : `מחיקת תוכנית לימוד: ${courseName}`}
+              ? `הסתרת תוכנית לימוד עם הקצאות: ${courseName}`
+              : `הסתרת תוכנית לימוד: ${courseName}`}
           </AlertDialogTitle>
           <AlertDialogDescription>
             {hasAssignments ? (
               <>
                 <p className="mb-4">
-                  לא ניתן למחוק את תוכנית הלימוד "{courseName}" מכיוון שהיא משויכת להקצאות הבאות:
+                  שים לב! תוכנית הלימוד "{courseName}" משויכת להקצאות הבאות:
                 </p>
                 <div className="max-h-40 overflow-y-auto rounded-md border bg-gray-50 p-3">
                   <ul className="list-disc pl-5 space-y-2">
@@ -70,25 +70,28 @@ const DeleteCourseDialog: React.FC<DeleteCourseDialogProps> = ({
                     ))}
                   </ul>
                 </div>
-                <p className="mt-4">
-                  כדי למחוק את תוכנית הלימוד, עליך לבטל תחילה את כל ההקצאות המשויכות אליה.
+                <p className="mt-4 text-orange-600 font-medium">
+                  הסתרת תוכנית הלימוד תסתיר גם את כל ההקצאות המשויכות אליה.
+                </p>
+                <p className="mt-2">
+                  האם אתה בטוח שברצונך להסתיר את תוכנית הלימוד וכל ההקצאות שלה?
                 </p>
               </>
             ) : (
-              "האם אתה בטוח שברצונך למחוק תוכנית לימוד זו? לא ניתן לשחזר פעולה זו."
+              "האם אתה בטוח שברצונך להסתיר תוכנית לימוד זו? התוכנית לא תוצג יותר ברשימות."
             )}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>ביטול</AlertDialogCancel>
-          {!hasAssignments && (
-            <Button
-              variant="destructive"
-              onClick={onConfirmDelete}
-            >
-              אישור ומחיקה
-            </Button>
-          )}
+          <Button
+            variant="destructive"
+            onClick={onConfirmDelete}
+            className="bg-orange-500 hover:bg-orange-600"
+          >
+            <EyeOff className="h-4 w-4 mr-2" />
+            {hasAssignments ? "הסתר תוכנית והקצאות" : "אישור והסתרה"}
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

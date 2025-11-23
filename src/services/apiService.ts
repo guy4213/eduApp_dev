@@ -11,12 +11,13 @@ import { supabase } from "@/integrations/supabase/client";
 // ============================================================================
 
 /**
- * Fetches all course templates
+ * Fetches all visible course templates
  */
 export async function fetchCourses() {
   const { data, error } = await supabase
     .from("courses")
-    .select("id, name, created_at, school_type, presentation_link, program_link");
+    .select("id, name, created_at, school_type, presentation_link, program_link, is_visible")
+    .eq("is_visible", true);
 
   if (error) {
     console.error("fetchCourses error:", error.message);
@@ -26,7 +27,7 @@ export async function fetchCourses() {
 }
 
 /**
- * Fetches courses with pagination
+ * Fetches visible courses with pagination
  */
 export async function fetchCoursesWithPagination(start: number, end: number) {
   const { data, error, count } = await supabase
@@ -37,8 +38,10 @@ export async function fetchCoursesWithPagination(start: number, end: number) {
       school_type,
       presentation_link,
       program_link,
-      created_at
+      created_at,
+      is_visible
     `, { count: 'exact' })
+    .eq("is_visible", true)
     .order('created_at', { ascending: false })
     .range(start, end);
 
@@ -50,7 +53,51 @@ export async function fetchCoursesWithPagination(start: number, end: number) {
 }
 
 /**
- * Deletes a course template and its dependencies
+ * Hides a course (soft delete) by setting is_visible = false
+ * Also hides all related course instances
+ */
+export async function hideCourse(courseId: string) {
+  // First, hide all related course instances
+  const { error: instancesError } = await supabase
+    .from("course_instances")
+    .update({ is_visible: false })
+    .eq("course_id", courseId);
+
+  if (instancesError) {
+    console.error("hideCourse - hiding instances error:", instancesError.message);
+    throw instancesError;
+  }
+
+  // Then hide the course itself
+  const { error } = await supabase
+    .from("courses")
+    .update({ is_visible: false })
+    .eq("id", courseId);
+
+  if (error) {
+    console.error("hideCourse error:", error.message);
+    throw error;
+  }
+}
+
+/**
+ * Hides a single course instance (soft delete) by setting is_visible = false
+ */
+export async function hideCourseInstance(instanceId: string) {
+  const { error } = await supabase
+    .from("course_instances")
+    .update({ is_visible: false })
+    .eq("id", instanceId);
+
+  if (error) {
+    console.error("hideCourseInstance error:", error.message);
+    throw error;
+  }
+}
+
+/**
+ * @deprecated Use hideCourse instead for soft delete
+ * Deletes a course template and its dependencies (hard delete)
  */
 export async function deleteCourseTemplate(courseId: string) {
   const { error } = await supabase.rpc("delete_course_template", {
@@ -68,12 +115,15 @@ export async function deleteCourseTemplate(courseId: string) {
 // ============================================================================
 
 /**
- * Fetches all course instances
+ * Fetches all visible course instances
+ * Also filters by parent course visibility
  */
 export async function fetchCourseInstances() {
   const { data, error } = await supabase
     .from("course_instances")
-    .select("*");
+    .select("*, courses!inner(is_visible)")
+    .eq("is_visible", true)
+    .eq("courses.is_visible", true);
 
   if (error) {
     console.error("fetchCourseInstances error:", error.message);
@@ -83,17 +133,20 @@ export async function fetchCourseInstances() {
 }
 
 /**
- * Checks for course assignments/instances by course ID
+ * Checks for ALL course assignments/instances by course ID (including hidden)
+ * Used for warning dialogs before hiding a course
  */
 export async function checkCourseAssignments(courseId: string) {
   const { data, error } = await supabase
     .from("course_instances")
     .select(`
       id,
+      is_visible,
       educational_institutions (name),
       profiles (full_name)
     `)
-    .eq("course_id", courseId);
+    .eq("course_id", courseId)
+    .eq("is_visible", true); // Only show visible assignments in warning
 
   if (error) {
     console.error("checkCourseAssignments error:", error.message);

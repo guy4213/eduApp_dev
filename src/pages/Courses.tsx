@@ -56,7 +56,7 @@ import {
   fetchTasksForLessons,
   fetchInstructors,
   checkCourseAssignments,
-  deleteCourseTemplate
+  hideCourse
 } from "@/services/apiService";
 
 interface Task {
@@ -160,18 +160,18 @@ const Courses = () => {
   };
 
   const confirmDelete = async () => {
-    if (!courseToDelete || assignmentDetails.length > 0) return;
+    if (!courseToDelete) return;
 
     setLoading(true);
     try {
-      // Use apiService function to safely delete the course and its dependencies
-      await deleteCourseTemplate(courseToDelete.id);
-      console.log("Course deleted successfully");
+      // Use soft delete - hide the course and all its related instances
+      await hideCourse(courseToDelete.id);
+      console.log("Course hidden successfully");
       setShowDeleteDialog(false);
       setCourseToDelete(null);
       await fetchCoursesData(); // Refresh the list of courses
     } catch (error) {
-      console.error("Error deleting course:", error);
+      console.error("Error hiding course:", error);
       // You can add an error toast here for the user
     }
     setLoading(false);

@@ -49,6 +49,7 @@ import MobileNavigation from "@/components/layout/MobileNavigation";
 import { fetchCombinedSchedules } from "@/utils/scheduleUtils"; // Make sure this path is correct
 import { DeleteConfirmationPopup } from "@/components/ui/DeleteConfirmationPopup ";
 import { Pagination } from "@/components/ui/Pagination"; // Import Pagination component
+import { hideCourseInstance } from "@/services/apiService";
 
 // Interface Definitions
 interface Task {
@@ -256,7 +257,7 @@ const CourseAssignments = () => {
 
   // --- Fetch Filter Options ---
   const fetchFilterOptions = useCallback(async () => {
-       console.log("[fetchFilterOptions] Fetching..."); try { const [instructorsRes, institutionsRes, coursesRes] = await Promise.all([ supabase.from("profiles").select("id, full_name").eq("role", "instructor").order("full_name"), supabase.from("educational_institutions").select("id, name").order("name"), supabase.from("courses").select("id, name, school_type").order("name"), ]); if (instructorsRes.error) throw instructorsRes.error; if (institutionsRes.error) throw institutionsRes.error; if (coursesRes.error) throw coursesRes.error; setInstructors(instructorsRes.data || []); setInstitutions(institutionsRes.data || []); setCourseTemplates(coursesRes.data || []); console.log("[fetchFilterOptions] Success."); } catch (error) { console.error("Error fetching filter options:", error); }
+       console.log("[fetchFilterOptions] Fetching..."); try { const [instructorsRes, institutionsRes, coursesRes] = await Promise.all([ supabase.from("profiles").select("id, full_name").eq("role", "instructor").order("full_name"), supabase.from("educational_institutions").select("id, name").order("name"), supabase.from("courses").select("id, name, school_type").eq("is_visible", true).order("name"), ]); if (instructorsRes.error) throw instructorsRes.error; if (institutionsRes.error) throw institutionsRes.error; if (coursesRes.error) throw coursesRes.error; setInstructors(instructorsRes.data || []); setInstitutions(institutionsRes.data || []); setCourseTemplates(coursesRes.data || []); console.log("[fetchFilterOptions] Success."); } catch (error) { console.error("Error fetching filter options:", error); }
   }, []);
 
 
@@ -274,11 +275,13 @@ const CourseAssignments = () => {
         .from("course_instances")
         .select(`
             id, grade_level, max_participants, price_for_customer, price_for_instructor,
-            start_date, end_date, created_at, lesson_mode,
-            course:course_id (id, name, school_type, presentation_link, program_link),
+            start_date, end_date, created_at, lesson_mode, is_visible,
+            course:course_id!inner (id, name, school_type, presentation_link, program_link, is_visible),
             instructor:instructor_id (id, full_name),
             institution:institution_id (id, name)
         `, { count: 'exact' })
+        .eq('is_visible', true) // Only show visible instances
+        .eq('course.is_visible', true) // Only show instances of visible courses
         .order('created_at', { ascending: false });
 
       if (isInstructor && user?.id) {
@@ -495,7 +498,7 @@ const CourseAssignments = () => {
     }, [currentPage, fetchAssignments]);
 
    const handleDeleteConfirm = useCallback(() => {
-       fetchAssignments(currentPage); alert("ההקצאה נמחקה בהצלחה!");
+       fetchAssignments(currentPage); alert("ההקצאה הוסתרה בהצלחה!");
     }, [currentPage, fetchAssignments]);
 
     // --- Filter Change Handlers ---
